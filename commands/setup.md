@@ -1,5 +1,5 @@
 ---
-description: Set the notification email, link this repo to a Build Questions review page (or make one), and schedule the hourly check
+description: Find the Python command, create the repo's central question list, link a Build Questions review page (or make one), and set your organize-and-digest schedule
 ---
 
 # /build-questions:setup
