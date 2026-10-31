@@ -35,7 +35,7 @@ Read and write it with the `ArtifactData` tool (load it with ToolSearch if it is
 |---|---|---|
 | `questions/<id>` | A copy of one central-list record: `n`, `asked_at`, `updated_at`, `source`, `topic`, `question`, `options`, `multi`, `answer`, `notes`, `status` (`answered`, `unanswered`, `changed`), `history`, `aliases` | You, on `sync` (from `bq.py diff`) |
 | `requests/<id>` | One change request: `question_id`, `question`, `current_answer`, `proposed`, `reason`, `by` (user id), `created_at`, `status` (`open`, `accepted`, `declined`, `applied`), `decided_by`, `decided_at`, `decision_note`, `notified_at`, `resolution`, `resolved_at`, `link` | Reviewers create; the owner accepts or declines (page or chat); you set `notified_at` and resolve |
-| `meta/project` | `repo`, `title`, `updated_at`, `count` | You, on `setup` and `sync` |
+| `meta/project` | `repo`, `title`, `updated_at`, `count`, `schedule_label` (shown on the page), `last_digest_at`, `last_run_at` | You, on `setup`, `sync`, `schedule` and `run` |
 | `settings/notify` | `email`, `method` (`resend`, `smtp`, `github`, `none`), `from`, `github_login`. Editors only; reviewers cannot read it | You, on `setup` |
 
 Never put an API key or password in the store. Email credentials live in the environment (`RESEND_API_KEY`, or
@@ -86,11 +86,8 @@ Creates the repo's central list, links a review page, and sets where notificatio
 6. Run `organize` for this repo (it gathers what's already scattered around), then `sync`.
 7. Commit `.claude/build-questions/`, `.gitattributes` and `CLAUDE.md` together ("Add central build-questions
    list"), following the repo's usual way of landing changes (its CLAUDE.md, its autopilot policy).
-8. **The scheduled check.** Offer, once, to create a scheduled task that runs `/build-questions:check <owner/repo>`
-   every hour in a fresh session, in an environment with this plugin installed and the email variables set. In a
-   cloud session use `create_trigger` (`create_new_session_on_fire: true`, `cron_expression: "0 * * * *"`); on a
-   computer, say how to make one in Claude Code (Routines). Without it, email goes out only when someone next works
-   in the repo.
+8. **The schedule.** Run `schedule` (below): the person chooses when questions are organized and presented to them.
+   Without a schedule, merging and email happen only when someone next works in the repo.
 9. Reply with the page link and three lines: the page is private until they share it from its Share menu;
    reviewers need **Contributor** ("can interact") access to request changes (Viewers can read only); Editors can
    accept or keep requests on the page.
@@ -145,6 +142,66 @@ For each repo:
 
 Reply with one line per repo: questions added, merged as duplicates, answers updated, files cleaned up, issues to
 close, and the commit or PR link.
+
+## schedule
+
+Sets when questions are organized and presented to the person, on their schedule. Arguments: a schedule in plain
+words ("weekdays at 8am", "Mondays and Thursdays 4pm", "every 2 hours"), `show`, `stop`, or nothing to choose.
+
+1. **Show / stop.** `bq.py schedule show` gives the current one. `stop`: delete or disable its scheduled task
+   (`task_id`; `delete_trigger` for a cloud task, or the desktop app's scheduled tasks), `bq.py schedule clear`,
+   remove `schedule_label` from each page's `meta/project`, and confirm. Done.
+2. **When.** If the arguments don't say, ask with AskUserQuestion:
+   - header "Schedule", question "How often should build questions be organized and sent to you?", options:
+     "Weekday mornings" (Mon-Fri), "Twice a week" (Mon and Thu), "Weekly" (Monday), "Daily" (every day).
+   - header "Time", question "At what time?", options: "8 am (Recommended)", "Noon", "5 pm".
+   Use the person's time zone (ask once if you don't know it) and write the cron with `CRON_TZ=<zone>` in front.
+   Move an on-the-hour time a few minutes earlier (8:00 becomes 7:52) so it doesn't queue behind everyone else's;
+   say the exact time in your reply.
+3. **What each run does.** Default: all four steps, `organize,sync,check,digest`. Ask only if the person mentions
+   wanting less ("just email me", "don't open PRs"): `digest` alone presents without changing any repo; leaving out
+   `organize` means no commits or PRs.
+4. **Which repos.** Default: this repo. "All my projects" means `all-linked` (every repo in `projects`).
+5. **Create the scheduled task**, one per schedule (not per repo), with the prompt
+   `/build-questions:run <repos> --steps <steps>`:
+   - In a cloud session: `create_trigger` with `create_new_session_on_fire: true`, the cron expression, and the
+     environment this session runs in (it must have this plugin installed, GitHub access to the repos, and the
+     email variables). Replace an existing schedule's task with `update_trigger` instead of adding a second one.
+   - On a computer: the desktop app's scheduled tasks (or a Routine in Claude Code on the web) with the same prompt
+     and schedule; create it with the scheduled-task tool if one is available, otherwise give the exact prompt and
+     schedule to paste. Note that a desktop task runs only while the computer is awake and the app is open.
+6. `bq.py schedule set --cron "<cron>" --tz <zone> --label "<plain words>" --repos <repos> --steps <steps>
+   --task-id <id> --where cloud|desktop`, and `update` each repo page's `meta/project` with `schedule_label`
+   ("Organized and sent Mondays and Thursdays at 7:52 am") so reviewers see when the owner hears about requests.
+7. Reply in one line: when it runs (exact local time), what it does, and that `/build-questions:schedule stop`
+   ends it. Offer `run` now to see the first digest.
+
+Change requests still reach the owner between scheduled runs whenever someone works in the repo (session start
+runs `check`), and the page shows them at once.
+
+## run
+
+One scheduled run. It works unattended: no questions to the person, no merges into a protected branch, nothing
+destructive. Arguments: repos (`owner/repo ...` or `all-linked`; default from `bq.py schedule show`, else the
+current checkout) and `--steps` (default `organize,sync,check,digest`).
+
+For each repo, in order, skipping steps not listed:
+
+1. **organize** (the section above), with its commit landing by pull request unless the repo's policy allows more.
+   Keep its stats (added, merged, files cleaned).
+2. **sync** (below).
+3. **check** (below): emails change requests that have not been emailed yet.
+4. **digest**: read `last_digest_at` from the page's `meta/project` (none: the last 7 days), save the open and
+   accepted requests to a JSON file, then
+   `bq.py digest --since <last_digest_at> --requests <file> --organized '<stats JSON>' --send`
+   (`--to`/`--method` from `settings/notify` in a fresh session; with method `github`, post the printed digest as a
+   comment on the `Build questions: change requests` issue; with `none`, skip sending). Then `update`
+   `meta/project` with `last_digest_at` and `last_run_at` = now. If there is nothing new, nothing waiting and no
+   requests, don't send; just update `last_run_at`.
+
+Then tell the person in the interface: `PushNotification` when available, one line per repo ("Tidyhaus: 3 new
+questions, 1 change request, 2 waiting"). End with the same lines, the PR links from organize, and any step that
+failed and why. A failed step never stops the other steps or repos.
 
 ## sync
 

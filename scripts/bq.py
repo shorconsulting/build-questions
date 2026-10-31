@@ -910,6 +910,56 @@ def compose_email(requests: list[dict], repo: str, page: str) -> tuple[str, str]
     return subject, "\n".join(lines)
 
 
+def compose_digest(recs: list[dict], repo: str, page: str, since: str, requests: list[dict] | None = None,
+                   organized: dict | None = None) -> tuple[str, str]:
+    """The scheduled summary: what's new or changed since the last digest, what's waiting, change requests."""
+    new = [r for r in recs if (r.get("asked_at") or "") > since]
+    changed = [r for r in recs if r not in new and (r.get("updated_at") or "") > since and r.get("history")]
+    waiting = [r for r in recs if not r.get("answer")]
+    reqs = [q for q in (requests or []) if q.get("status") in ("open", "accepted")]
+    q = lambda r: f"Q{r.get('n', 0):03d}"
+    parts = []
+    if new:
+        parts.append(f"{len(new)} new")
+    if changed:
+        parts.append(f"{len(changed)} changed")
+    if reqs:
+        parts.append(f"{len(reqs)} change request{'s' if len(reqs) != 1 else ''}")
+    if waiting:
+        parts.append(f"{len(waiting)} waiting for an answer")
+    subject = f"[{repo}] Build questions: " + (", ".join(parts) if parts else "nothing new")
+    lines = [f"Build questions for {repo}" + (f" since {since[:10]}" if since else "") + ".", ""]
+    if organized and any(organized.get(k) for k in ("added", "merged", "files")):
+        lines += [f"Organized: {organized.get('added', 0)} found in other places, {organized.get('merged', 0)} "
+                  f"duplicates merged, {organized.get('files', 0)} files cleaned up.", ""]
+    if reqs:
+        lines.append("CHANGE REQUESTS")
+        for r in reqs:
+            lines.append(f"  {r.get('question_id', '')}: {r.get('question', '').strip()}")
+            lines.append(f"    Now: {r.get('current_answer') or '(none)'} -> Proposed: {r.get('proposed') or '?'}"
+                         f" [{r.get('status')}]")
+        lines.append("")
+    if waiting:
+        lines.append("WAITING FOR AN ANSWER")
+        lines += [f"  {q(r)}{' · ' + r['topic'] if r.get('topic') else ''}: {r['question']}" for r in waiting]
+        lines.append("")
+    if new:
+        lines.append("NEW")
+        lines += [f"  {q(r)} {r['question']}\n    -> {r.get('answer') or '(no answer yet)'}" for r in new]
+        lines.append("")
+    if changed:
+        lines.append("CHANGED")
+        lines += [f"  {q(r)} {r['question']}\n    -> {r['answer']} (was: {r['history'][-1]['answer']})" for r in changed]
+        lines.append("")
+    if not (new or changed or waiting or reqs):
+        lines += ["Nothing new, nothing waiting.", ""]
+    lines.append(f"{len(recs)} questions in total.")
+    if page:
+        lines.append(f"Review page: {page}")
+    lines += ["", "Sent on your schedule by the build-questions plugin (/build-questions:schedule to change it)."]
+    return subject, "\n".join(lines)
+
+
 def send_email(method: str, to: str, subject: str, body: str, sender: str | None = None) -> str:
     if not to:
         raise SystemExit("no recipient: set one with `bq.py config set email you@example.com`")
@@ -1207,6 +1257,37 @@ def cmd_set_answer(args) -> int:
     return 0
 
 
+def cmd_digest(args) -> int:
+    root, repo = _root(args), _repo(args)
+    cfg = load_config()
+    page = args.page or ((cfg.get("projects") or {}).get(repo) or {}).get("artifact") or ""
+    reqs = json.loads(Path(args.requests).read_text()) if args.requests else []
+    organized = json.loads(args.organized) if args.organized else None
+    subject, body = compose_digest(read_store(root, repo), repo, page, args.since or "", reqs, organized)
+    if not args.send:
+        _out({"subject": subject, "body": body})
+        return 0
+    notify = cfg.get("notify") or {}
+    method = args.method or notify.get("method") or "none"
+    print(send_email(method, args.to or cfg.get("email") or "", subject, body, notify.get("from")))
+    return 0
+
+
+def cmd_schedule(args) -> int:
+    """Remember the schedule the person chose (the scheduled task itself is created by Claude)."""
+    cfg = load_config()
+    if args.action == "set":
+        cfg["schedule"] = {k: v for k, v in {
+            "cron": args.cron, "tz": args.tz, "label": args.label, "repos": args.repos,
+            "steps": args.steps, "task_id": args.task_id, "where": args.where, "updated_at": now_iso()}.items() if v}
+        save_config(cfg)
+    elif args.action == "clear":
+        cfg.pop("schedule", None)
+        save_config(cfg)
+    _out(cfg.get("schedule") or {})
+    return 0
+
+
 def cmd_email(args) -> int:
     cfg = load_config()
     reqs = json.loads(Path(args.requests).read_text())
@@ -1285,6 +1366,25 @@ def main(argv=None) -> int:
     p.add_argument("question", help="id or Q-number (Q014)")
     p.add_argument("answer")
     p.add_argument("--request")
+
+    p = p_("digest", cmd_digest, "the scheduled summary of new, changed and waiting questions")
+    p.add_argument("--since", help="ISO time of the last digest")
+    p.add_argument("--requests", help="JSON file of change requests from the page")
+    p.add_argument("--organized", help='JSON stats from organize, e.g. {"added":2,"merged":1,"files":1}')
+    p.add_argument("--page")
+    p.add_argument("--send", action="store_true", help="email it (otherwise print it)")
+    p.add_argument("--to")
+    p.add_argument("--method", choices=["resend", "smtp"])
+    p = sub.add_parser("schedule", help="remember the organize-and-present schedule")
+    p.add_argument("action", choices=["show", "set", "clear"])
+    p.add_argument("--cron")
+    p.add_argument("--tz")
+    p.add_argument("--label", help='how to say it, e.g. "Mondays and Thursdays at 8:40"')
+    p.add_argument("--repos", help="comma-separated owner/repo list, or all-linked")
+    p.add_argument("--steps", help="comma-separated: organize,sync,check,digest")
+    p.add_argument("--task-id")
+    p.add_argument("--where", choices=["cloud", "desktop", "session"])
+    p.set_defaults(fn=cmd_schedule)
 
     p = sub.add_parser("email", help="email the owner about change requests")
     p.add_argument("--requests", required=True, help="JSON file: one request or a list")

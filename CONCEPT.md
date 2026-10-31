@@ -52,7 +52,8 @@ flowchart LR
 7. **History, not overwrite.** A changed answer keeps the old one (shown struck through) and links the request and
    the PR that made the change.
 8. **Email without a server.** The page can't send mail and nothing runs when a reviewer clicks, so email goes out on
-   the next `check`: an hourly scheduled task, plus the start of any Claude session in the repo. The page shows the
+   the next run on the schedule the owner chose (`/build-questions:schedule`: weekday mornings, weekly, any time),
+   which also organizes the list and sends a digest, plus the start of any Claude session in the repo. The page shows the
    request to the owner immediately. Sending is pluggable (Resend, SMTP, or a GitHub @-mention as the zero-setup
    fallback); keys stay in environment variables, and the address lives in the local config and in an Editors-only
    document on the page so a fresh cloud session can find it.

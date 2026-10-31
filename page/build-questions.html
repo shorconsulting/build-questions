@@ -141,7 +141,7 @@ footer { font-size: .85rem; color: var(--muted) }
   <header>
     <span class="eyebrow">Build questions</span>
     <h1 id="title">Build Questions</h1>
-    <div class="sub"><span id="repo" class="mono"></span><span id="updated"></span><span id="who"></span></div>
+    <div class="sub"><span id="repo" class="mono"></span><span id="updated"></span><span id="schedule"></span></div>
   </header>
 
   <div class="strip" id="strip">
@@ -237,6 +237,7 @@ footer { font-size: .85rem; color: var(--muted) }
     if (state.meta.title) { $("title").textContent = state.meta.title; }
     $("repo").textContent = state.meta.repo || "";
     $("updated").textContent = state.meta.updated_at ? "Updated " + fmtDate(state.meta.updated_at) : "";
+    $("schedule").textContent = state.meta.schedule_label || "";
     const b = $("banner");
     if (open && state.canEdit) {
       $("banner-text").textContent = `${open} change request${open > 1 ? "s are" : " is"} waiting for your decision. Accept one and Claude makes the change in the build.`;

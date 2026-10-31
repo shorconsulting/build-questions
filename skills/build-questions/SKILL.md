@@ -1,6 +1,6 @@
 ---
 name: build-questions
-description: Keep every product question and decision for a build in the repo's one central list (.claude/build-questions/), and act on reviewers' change requests. Use at the start of build work in any repo with a .claude/build-questions/ folder or a Build Questions page, before asking the user any product question, when you are about to write questions, decisions or "open questions" into a plan, spec, notes file or issue, and when the user asks about past decisions, change requests, or tidying up where questions live.
+description: Keep every product question and decision for a build in the repo's one central list (.claude/build-questions/), and act on reviewers' change requests. Use at the start of build work in any repo with a .claude/build-questions/ folder or a Build Questions page, before asking the user any product question, when you are about to write questions, decisions or "open questions" into a plan, spec, notes file or issue, and when the user asks about past decisions, change requests, tidying up where questions live, or getting questions organized and sent to them on a schedule.
 ---
 
 # Build questions
@@ -65,6 +65,7 @@ in their place. Commit changes to the list with the work they belong to.
 - An accepted request is real work: make the change the normal way for this repo, then `bq.py set-answer` and mark
   the request applied with the PR or commit link (guide: **resolve**).
 - "Show me the change requests" → **changes**. "Open the page" → **changes --page**.
+- "Send me the questions every Monday", "organize these weekly", "change/stop the schedule" → **schedule**.
 
 ## End of turn
 

@@ -306,6 +306,30 @@ class TestBackfill(Base):
         self.assertEqual(recs[0]["id"], live[0]["id"])
 
 
+class TestDigest(Base):
+    def test_digest_sections(self):
+        self.enroll()
+        recs = [bq.clean({"question": "Which database?", "answer": "SQLite", "asked_at": "2026-10-01T00:00:00Z", "n": 1}, "acme/app"),
+                bq.clean({"question": "Monthly or yearly billing?", "answer": "", "asked_at": "2026-10-20T00:00:00Z", "n": 2}, "acme/app"),
+                bq.clean({"question": "Button colour?", "answer": "Orange", "asked_at": "2026-09-01T00:00:00Z", "n": 3,
+                          "updated_at": "2026-10-21T00:00:00Z", "history": [{"answer": "Green"}]}, "acme/app")]
+        s, b = bq.compose_digest(recs, "acme/app", "https://claude.ai/artifact/x", "2026-10-15T00:00:00Z",
+                                 [{"question_id": "q-1", "question": "Which database?", "status": "open", "proposed": "Postgres"}],
+                                 {"added": 2, "merged": 1, "files": 1})
+        self.assertIn("1 new, 1 changed, 1 change request, 1 waiting", s)
+        for part in ("CHANGE REQUESTS", "WAITING FOR AN ANSWER", "NEW", "CHANGED", "was: Green", "Organized: 2"):
+            self.assertIn(part, b)
+        s, b = bq.compose_digest(recs[:1], "acme/app", "", "2026-10-15T00:00:00Z")
+        self.assertIn("nothing new", s)
+
+    def test_schedule_config(self):
+        run(["schedule", "set", "--cron", "40 8 * * 1", "--tz", "America/Toronto", "--label", "Mondays 8:40",
+             "--steps", "organize,sync,check,digest", "--where", "cloud"])
+        self.assertEqual(bq.load_config()["schedule"]["cron"], "40 8 * * 1")
+        run(["schedule", "clear"])
+        self.assertNotIn("schedule", bq.load_config())
+
+
 class TestEmail(unittest.TestCase):
     def test_compose(self):
         s, b = bq.compose_email([{"question_id": "q-1", "question": "DB?", "current_answer": "SQLite",

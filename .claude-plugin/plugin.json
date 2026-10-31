@@ -1,7 +1,7 @@
 {
   "name": "build-questions",
   "displayName": "Build Questions",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Keeps one central, committed list of every question asked while building an app (in each repo, merged from wherever Claude asked them), publishes it for review, and emails the owner when a reviewer requests a change.",
   "author": {
     "name": "David Shor",

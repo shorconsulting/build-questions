@@ -20,6 +20,10 @@ A Claude Code plugin that keeps one central, reviewable list of every decision m
 - **Publishes** it on a review page per project (a claude.ai artifact) with two tabs: **Open questions** (no
   answer yet, or a change request pending) as full cards, and **Settled questions** as one compact row each:
   question, answer, and a Request a change button.
+- **Runs on your schedule.** `/build-questions:schedule` sets when questions are organized and presented to you
+  (weekday mornings, twice a week, weekly, any time you name). Each run merges strays, updates the page, checks
+  for change requests and emails a digest: change requests, questions waiting for an answer, and what's new or
+  changed since the last one.
 - **Notifies the owner** of change requests by email (the address chosen at setup) and in the interface: a banner
   and the **Open questions** tab on the page, a note at the start of every Claude session in the repo, and
   `/build-questions:changes` in chat.
@@ -44,8 +48,10 @@ Needs `python3` and `git` (`gh` for issues). Then, inside the repo being built: 
 
 | Command | What it does |
 |---|---|
-| `/build-questions:setup` | Creates the repo's central list and memory block, sets the notification email, links a review page (or publishes one), offers the hourly check |
+| `/build-questions:setup` | Creates the repo's central list and memory block, sets the notification email, links a review page (or publishes one), sets your schedule |
 | `/build-questions:organize [owner/repo ...] [--all-linked]` | Merges questions from stray files, issues, past sessions and this computer into each repo's list, cleans up the strays, refreshes memory, commits |
+| `/build-questions:schedule [when \| show \| stop]` | Choose when questions are organized and presented to you (e.g. weekday mornings, Mondays 8am); creates the scheduled task |
+| `/build-questions:run` | One scheduled run: organize, sync, check, and email the digest (what the schedule fires; also works by hand) |
 | `/build-questions:sync` | Makes the review page match the central list, both ways |
 | `/build-questions:check` | Finds new change requests, emails the owner, reports. Safe unattended: use it as the scheduled task |
 | `/build-questions:changes [--all] [--page]` | Lists requested changes in chat, or opens the page on its Open questions tab |
@@ -77,7 +83,7 @@ Chosen at setup (`notify.method` in `~/.build-questions/config.json`):
 | `github` | nothing | Claude @-mentions you on one issue in the repo; GitHub emails your GitHub address |
 | `none` | | Page and chat only |
 
-Emails go out when `check` runs: hourly from the scheduled task setup offers, and at the start of build work in the
+Emails go out on the schedule you choose (`/build-questions:schedule`) and when someone starts build work in the
 repo. Credentials are never written to the page.
 
 ## Who can do what on the page
