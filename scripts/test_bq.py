@@ -337,11 +337,38 @@ class TestEmail(unittest.TestCase):
         self.assertIn("1 change request ", s)
         self.assertIn("https://claude.ai/artifact/x#open", b)
 
-    def test_missing_settings(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
-            for m, to in (("resend", "a@b.c"), ("smtp", "a@b.c"), ("resend", "")):
-                with self.assertRaises(SystemExit):
-                    bq.send_email(m, to, "s", "b")
+    def test_bq_has_no_network_or_credentials(self):
+        src = Path(bq.__file__).read_text()
+        for bad in ("urllib", "smtplib", "API_KEY", "PASSWORD", "import requests", "http.client"):
+            self.assertNotIn(bad, src)
+
+
+class TestMailServer(unittest.TestCase):
+    def setUp(self):
+        import mail_server
+        self.m = mail_server
+
+    def call(self, name, args=None):
+        return self.m.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args or {}}})
+
+    def test_protocol(self):
+        init = self.m.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}})
+        self.assertEqual(init["result"]["serverInfo"]["name"], "build-questions-mail")
+        self.assertIsNone(self.m.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}))
+        names = [t["name"] for t in self.m.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]]
+        self.assertEqual(names, ["email_status", "send_email"])
+
+    def test_status_and_refusals_without_options(self):
+        env = {"BQ_EMAIL": "a@b.c", "BQ_METHOD": "resend", "BQ_RESEND_API_KEY": "${user_config.resend_api_key}"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            st = json.loads(self.call("email_status")["result"]["content"][0]["text"])
+            self.assertEqual(st["missing_options"], ["resend_api_key"])
+            self.assertNotIn("resend_key", st)
+            r = self.call("send_email", {"subject": "s", "body": "b"})["result"]
+            self.assertTrue(r["isError"])
+            self.assertIn("resend_api_key", r["content"][0]["text"])
+        with mock.patch.dict(os.environ, {"BQ_METHOD": "none"}, clear=True):
+            self.assertIn("nothing is sent", self.call("send_email", {"subject": "s", "body": "b"})["result"]["content"][0]["text"])
 
 
 if __name__ == "__main__":

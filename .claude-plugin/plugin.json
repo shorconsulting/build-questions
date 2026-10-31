@@ -1,7 +1,7 @@
 {
   "name": "build-questions",
   "displayName": "Build Questions",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Keeps one central, committed list of every question asked while building an app (in each repo, merged from wherever Claude asked them), publishes it for review, and emails the owner when a reviewer requests a change.",
   "author": {
     "name": "David Shor",
@@ -18,5 +18,76 @@
   ],
   "icon": ".claude-plugin/icon.png",
   "license": "MIT",
-  "documentationUrl": "https://github.com/shorconsulting/build-questions#readme"
+  "userConfig": {
+    "notify_email": {
+      "type": "string",
+      "title": "Notification email",
+      "description": "Where change-request notices and scheduled digests are sent.",
+      "required": false
+    },
+    "email_method": {
+      "type": "string",
+      "title": "How to send email",
+      "description": "resend (an API key from resend.com), smtp (any mailbox), github (an @-mention on an issue; no email setup), or none (page and chat only).",
+      "required": false,
+      "default": "none"
+    },
+    "email_from": {
+      "type": "string",
+      "title": "From address (optional)",
+      "description": "Sender, e.g. Build Questions <bq@yourdomain.com>. Resend needs a verified domain for this; without one it sends only to your Resend account's address.",
+      "required": false
+    },
+    "resend_api_key": {
+      "type": "string",
+      "title": "Resend API key",
+      "description": "Only for the resend method.",
+      "required": false,
+      "sensitive": true
+    },
+    "smtp_host": {
+      "type": "string",
+      "title": "SMTP server",
+      "description": "Only for the smtp method, e.g. smtp.gmail.com.",
+      "required": false
+    },
+    "smtp_port": {
+      "type": "string",
+      "title": "SMTP port",
+      "description": "587 (STARTTLS) or 465 (SSL).",
+      "required": false,
+      "default": "587"
+    },
+    "smtp_user": {
+      "type": "string",
+      "title": "SMTP username",
+      "description": "Only for the smtp method.",
+      "required": false
+    },
+    "smtp_password": {
+      "type": "string",
+      "title": "SMTP password",
+      "description": "Only for the smtp method; an app password where the provider offers one.",
+      "required": false,
+      "sensitive": true
+    }
+  },
+  "mcpServers": {
+    "mail": {
+      "command": "python3",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/scripts/mail_server.py"
+      ],
+      "env": {
+        "BQ_EMAIL": "${user_config.notify_email}",
+        "BQ_METHOD": "${user_config.email_method}",
+        "BQ_FROM": "${user_config.email_from}",
+        "BQ_RESEND_API_KEY": "${user_config.resend_api_key}",
+        "BQ_SMTP_HOST": "${user_config.smtp_host}",
+        "BQ_SMTP_PORT": "${user_config.smtp_port}",
+        "BQ_SMTP_USER": "${user_config.smtp_user}",
+        "BQ_SMTP_PASSWORD": "${user_config.smtp_password}"
+      }
+    }
+  }
 }

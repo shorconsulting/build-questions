@@ -55,8 +55,8 @@ flowchart LR
    the next run on the schedule the owner chose (`/build-questions:schedule`: weekday mornings, weekly, any time),
    which also organizes the list and sends a digest, plus the start of any Claude session in the repo. The page shows the
    request to the owner immediately. Sending is pluggable (Resend, SMTP, or a GitHub @-mention as the zero-setup
-   fallback); keys stay in environment variables, and the address lives in the local config and in an Editors-only
-   document on the page so a fresh cloud session can find it.
+   fallback). The address and keys are plugin options that Claude Code asks for when the plugin is enabled (keys in
+   secure storage), and only a small bundled mail server ever sees them.
 
 ## Open questions for you
 

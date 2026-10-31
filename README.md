@@ -74,17 +74,21 @@ Each record: `id`, `n` (Q-number), `question`, `answer`, `topic`, `options`, `so
 
 ## Email
 
-Chosen at setup (`notify.method` in `~/.build-questions/config.json`):
+Set in the plugin's options, which Claude Code asks for when you enable the plugin (change them later with
+`/plugin` → build-questions → Configure, or `claude plugin configure build-questions`):
 
-| Method | Needs | Notes |
-|---|---|---|
-| `resend` | `RESEND_API_KEY` | Recommended. Test sender delivers only to the Resend account's address until a domain is verified |
-| `smtp` | `BQ_SMTP_HOST`, `BQ_SMTP_PORT`, `BQ_SMTP_USER`, `BQ_SMTP_PASSWORD`, `BQ_SMTP_FROM` | Any mailbox |
-| `github` | nothing | Claude @-mentions you on one issue in the repo; GitHub emails your GitHub address |
-| `none` | | Page and chat only |
+| Option | |
+|---|---|
+| `notify_email` | Where notices and digests go |
+| `email_method` | `resend` (recommended), `smtp`, `github` (an @-mention on an issue; GitHub emails you), or `none` |
+| `email_from` | Optional sender; Resend needs a verified domain for it |
+| `resend_api_key` | For `resend`. Kept in secure storage |
+| `smtp_host`, `smtp_port`, `smtp_user`, `smtp_password` | For `smtp`. The password is kept in secure storage |
 
-Emails go out on the schedule you choose (`/build-questions:schedule`) and when someone starts build work in the
-repo. Credentials are never written to the page.
+Mail is sent only by the bundled `mail` MCP server (`scripts/mail_server.py`), which receives these options from
+Claude Code. Nothing else in the plugin touches a credential or the network, and nothing is written to the page
+or the repo. Emails go out on the schedule you choose (`/build-questions:schedule`) and when someone starts build
+work in the repo.
 
 ## Who can do what on the page
 
@@ -99,7 +103,8 @@ repo. Credentials are never written to the page.
 ```
 .claude-plugin/plugin.json      manifest (marketplace.json beside it: this repo is its own marketplace)
 hooks/hooks.json                capture (AskUserQuestion), stray check (Write/Edit), SessionStart note, Stop reminder
-scripts/bq.py                   central list, merge, scan, memory, hooks, page diff, email (stdlib only)
+scripts/bq.py                   central list, merge, scan, memory, hooks, page diff, email text (stdlib, no network)
+scripts/mail_server.py          the only part that sends mail: a small MCP server fed by the plugin's options
 scripts/test_bq.py              unit tests
 skills/build-questions/SKILL.md how Claude asks, records and handles change requests
 commands/*.md                   the slash commands; all read docs/commands.md

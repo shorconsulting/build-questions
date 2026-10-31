@@ -15,11 +15,15 @@ THE CENTRAL LIST (source of truth, committed in each repo)
   `updated_at` wins. Lines without an id get one from their question text.
 
 LOCAL (per computer, under $BUILD_QUESTIONS_HOME, default ~/.build-questions)
-  config.json                 email, notify method, linked projects {owner/repo: {artifact, title}}
+  config.json                 linked projects {owner/repo: {artifact, title}}, schedule
   log/<owner__repo>.jsonl     questions captured in repos not enrolled yet (merged in by `organize`)
   state/<owner__repo>.json    hook bookkeeping
 
 THE PAGE (claude.ai artifact) is the review surface. `diff` and `pull` reconcile it with the central list.
+
+EMAIL is not sent from here: `email` and `digest` print {subject, body}, and Claude sends it with the bundled mail
+server (scripts/mail_server.py), which gets its settings from the plugin's options. This script reads no
+credentials and makes no network calls.
 
 Hooks never fail the session: every hook entry point swallows errors and exits 0.
 """
@@ -32,11 +36,8 @@ import hashlib
 import json
 import os
 import re
-import smtplib
 import subprocess
 import sys
-import urllib.request
-from email.message import EmailMessage
 from pathlib import Path
 
 SCHEMA = 2
@@ -960,43 +961,6 @@ def compose_digest(recs: list[dict], repo: str, page: str, since: str, requests:
     return subject, "\n".join(lines)
 
 
-def send_email(method: str, to: str, subject: str, body: str, sender: str | None = None) -> str:
-    if not to:
-        raise SystemExit("no recipient: set one with `bq.py config set email you@example.com`")
-    if method == "resend":
-        api_key = os.environ.get("RESEND_API_KEY")
-        if not api_key:
-            raise SystemExit("RESEND_API_KEY is not set in this environment")
-        payload = json.dumps({"from": sender or "Build Questions <onboarding@resend.dev>",
-                              "to": [to], "subject": subject, "text": body}).encode()
-        req = urllib.request.Request("https://api.resend.com/emails", data=payload, method="POST", headers={
-            "Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
-            "User-Agent": "build-questions/0.2"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            return "resend: " + json.loads(resp.read() or b"{}").get("id", "sent")
-    if method == "smtp":
-        host = os.environ.get("BQ_SMTP_HOST")
-        if not host:
-            raise SystemExit("BQ_SMTP_HOST is not set in this environment")
-        port = int(os.environ.get("BQ_SMTP_PORT") or 587)
-        user = os.environ.get("BQ_SMTP_USER")
-        pw = os.environ.get("BQ_SMTP_PASSWORD")
-        msg = EmailMessage()
-        msg["From"] = sender or os.environ.get("BQ_SMTP_FROM") or user or to
-        msg["To"] = to
-        msg["Subject"] = subject
-        msg.set_content(body)
-        s = smtplib.SMTP_SSL(host, port, timeout=20) if port == 465 else smtplib.SMTP(host, port, timeout=20)
-        if port != 465:
-            s.starttls()
-        with s:
-            if user and pw:
-                s.login(user, pw)
-            s.send_message(msg)
-        return f"smtp: sent via {host}"
-    raise SystemExit(f"email method {method!r} is not sent by this script (see docs/commands.md 'check')")
-
-
 # ---------------------------------------------------------------- CLI
 
 def _repo(args) -> str:
@@ -1099,7 +1063,6 @@ def cmd_status(args) -> int:
     _out({
         "repo": repo, "root": str(root) if root else None, "enrolled": enrolled(root),
         "page": ((cfg.get("projects") or {}).get(repo) or {}).get("artifact"),
-        "email": cfg.get("email"), "notify": cfg.get("notify"),
         "questions": len(recs), "unanswered": sum(1 for r in recs if not r.get("answer")),
         "captured_locally_not_merged": len(read_jsonl(log_path(repo), repo)),
         "store": str(store_file(root)) if root else None,
@@ -1258,18 +1221,14 @@ def cmd_set_answer(args) -> int:
 
 
 def cmd_digest(args) -> int:
+    """Print the digest as {subject, body}; Claude sends it with the mail server's send_email tool."""
     root, repo = _root(args), _repo(args)
     cfg = load_config()
     page = args.page or ((cfg.get("projects") or {}).get(repo) or {}).get("artifact") or ""
     reqs = json.loads(Path(args.requests).read_text()) if args.requests else []
     organized = json.loads(args.organized) if args.organized else None
     subject, body = compose_digest(read_store(root, repo), repo, page, args.since or "", reqs, organized)
-    if not args.send:
-        _out({"subject": subject, "body": body})
-        return 0
-    notify = cfg.get("notify") or {}
-    method = args.method or notify.get("method") or "none"
-    print(send_email(method, args.to or cfg.get("email") or "", subject, body, notify.get("from")))
+    _out({"subject": subject, "body": body})
     return 0
 
 
@@ -1289,18 +1248,14 @@ def cmd_schedule(args) -> int:
 
 
 def cmd_email(args) -> int:
+    """Print the change-request email as {subject, body}; Claude sends it with the mail server's send_email tool."""
     cfg = load_config()
     reqs = json.loads(Path(args.requests).read_text())
     reqs = reqs if isinstance(reqs, list) else [reqs]
     repo = args.repo or detect_repo()
     page = args.page or ((cfg.get("projects") or {}).get(repo) or {}).get("artifact") or ""
     subject, body = compose_email(reqs, repo, page)
-    if args.dry_run:
-        _out({"subject": subject, "body": body})
-        return 0
-    notify = cfg.get("notify") or {}
-    method = args.method or notify.get("method") or "none"
-    print(send_email(method, args.to or cfg.get("email") or "", subject, body, args.sender or notify.get("from")))
+    _out({"subject": subject, "body": body})
     return 0
 
 
@@ -1372,9 +1327,6 @@ def main(argv=None) -> int:
     p.add_argument("--requests", help="JSON file of change requests from the page")
     p.add_argument("--organized", help='JSON stats from organize, e.g. {"added":2,"merged":1,"files":1}')
     p.add_argument("--page")
-    p.add_argument("--send", action="store_true", help="email it (otherwise print it)")
-    p.add_argument("--to")
-    p.add_argument("--method", choices=["resend", "smtp"])
     p = sub.add_parser("schedule", help="remember the organize-and-present schedule")
     p.add_argument("action", choices=["show", "set", "clear"])
     p.add_argument("--cron")
@@ -1386,14 +1338,10 @@ def main(argv=None) -> int:
     p.add_argument("--where", choices=["cloud", "desktop", "session"])
     p.set_defaults(fn=cmd_schedule)
 
-    p = sub.add_parser("email", help="email the owner about change requests")
+    p = sub.add_parser("email", help="the change-request email, as {subject, body}")
     p.add_argument("--requests", required=True, help="JSON file: one request or a list")
     p.add_argument("--repo")
     p.add_argument("--page")
-    p.add_argument("--to")
-    p.add_argument("--method", choices=["resend", "smtp"])
-    p.add_argument("--sender")
-    p.add_argument("--dry-run", action="store_true")
     p.set_defaults(fn=cmd_email)
 
     args = ap.parse_args(argv)
