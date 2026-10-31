@@ -1,0 +1,396 @@
+<title>Build Questions</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column, like a reviewed questionnaire. Each answer sits in an answer box; a reviewer's
+   change request is a highlighter mark on that box. Summary strip, then tabs, then the list. */
+:root {
+  --bg: #f3f5f8;
+  --paper: #ffffff;
+  --ink: #18202c;
+  --muted: #5b6676;
+  --rule: #d9dee6;
+  --accent: #2346a8;          /* ink-blue: links, buttons, focus */
+  --accent-ink: #ffffff;
+  --mark: #ffe58a;            /* reviewer's highlighter: change requested */
+  --mark-ink: #4a3a00;
+  --ok: #1d7a4c;
+  --no: #8a3b3b;
+  --soft: #e8ecf3;
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11151c; --paper: #181e28; --ink: #e6ebf2; --muted: #9aa5b5; --rule: #2b3442;
+  --accent: #8fb0ff; --accent-ink: #0d1424; --mark: #6b5a12; --mark-ink: #fff2bf;
+  --ok: #6fd3a0; --no: #f0a0a0; --soft: #212a37; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11151c; --paper: #181e28; --ink: #e6ebf2; --muted: #9aa5b5; --rule: #2b3442;
+  --accent: #8fb0ff; --accent-ink: #0d1424; --mark: #6b5a12; --mark-ink: #fff2bf;
+  --ok: #6fd3a0; --no: #f0a0a0; --soft: #212a37; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--f-body); }
+.wrap { max-width: 52rem; margin: 0 auto; padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 22px }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: -.01em }
+h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); line-height: 1.05 }
+h2 { font-size: 1.25rem }
+.eyebrow { font: 700 .72rem/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted) }
+.mono { font-family: var(--f-mono); font-size: .82rem; font-variant-numeric: tabular-nums }
+.muted { color: var(--muted) }
+button, input, select, textarea { font: inherit; color: inherit }
+a { color: var(--accent) }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+header { display: grid; gap: 8px }
+.sub { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: .92rem }
+
+.strip { display: flex; flex-wrap: wrap; gap: 10px 28px; padding-block: 14px; border-block: 1px solid var(--rule) }
+.strip div { display: grid; gap: 2px }
+.strip b { font: 700 1.6rem/1 var(--f-display); font-variant-numeric: tabular-nums }
+.strip span { font-size: .85rem; color: var(--muted) }
+.strip .hot b { background: var(--mark); color: var(--mark-ink); padding: 0 6px; border-radius: 3px; justify-self: start }
+
+.banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 16px;
+  background: var(--mark); color: var(--mark-ink); border-radius: 6px }
+.banner p { margin: 0; flex: 1 1 18rem; min-width: 0 }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); overflow-x: auto }
+.tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 12px 9px; cursor: pointer;
+  font-weight: 700; color: var(--muted); white-space: nowrap }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent) }
+.tab .count { font-family: var(--f-mono); font-weight: 400; font-size: .8rem; margin-left: 4px }
+
+.tools { display: flex; flex-wrap: wrap; gap: 10px }
+.tools input, .tools select { padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper) }
+.tools input { flex: 1 1 14rem; min-width: 0 }
+
+.list { display: grid; gap: 14px }
+.q { background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 16px 18px; display: grid; gap: 10px; min-width: 0 }
+.q-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: .85rem; color: var(--muted) }
+.q-num { font: 500 .85rem var(--f-mono); color: var(--ink) }
+.topic { font-weight: 700; color: var(--accent) }
+.q-text { font: 700 1.08rem/1.35 var(--f-display); margin: 0 }
+.opts { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none }
+.opts li { font-size: .82rem; padding: 3px 8px; border-radius: 4px; background: var(--soft); color: var(--muted) }
+.opts li.chosen { background: none; outline: 1.5px solid var(--ink); color: var(--ink); font-weight: 700 }
+.answer { border-left: 3px solid var(--ink); padding: 6px 12px; display: grid; gap: 2px }
+.answer.marked { background: var(--mark); color: var(--mark-ink); border-left-color: var(--mark-ink) }
+.answer .label { font: 700 .7rem/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; opacity: .75 }
+.answer .val { font-weight: 700; overflow-wrap: anywhere }
+.answer .was { text-decoration: line-through; opacity: .7; font-size: .9rem }
+.notes { font-style: italic; color: var(--muted); font-size: .92rem; margin: 0; overflow-wrap: anywhere }
+.pill { display: inline-block; font: 700 .68rem/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px; border-radius: 3px; background: var(--soft); color: var(--muted) }
+.pill.open { background: var(--mark); color: var(--mark-ink) }
+.pill.accepted { background: var(--accent); color: var(--accent-ink) }
+.pill.applied { color: var(--ok); outline: 1px solid currentColor; background: none }
+.pill.declined { color: var(--no); outline: 1px solid currentColor; background: none }
+.pill.decided { color: var(--accent); outline: 1px solid currentColor; background: none }
+
+.reqs { display: grid; gap: 8px; border-top: 1px dashed var(--rule); padding-top: 10px }
+.req { display: grid; gap: 4px; font-size: .92rem; min-width: 0 }
+.req-line { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline }
+.req p { margin: 0; overflow-wrap: anywhere }
+.actions { display: flex; flex-wrap: wrap; gap: 8px }
+.btn { border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); border-radius: 6px; padding: 7px 12px; font-weight: 700; cursor: pointer }
+.btn.ghost { background: none; color: var(--accent) }
+.btn.quiet { border-color: var(--rule); background: none; color: var(--muted); font-weight: 400 }
+.btn:disabled { opacity: .55; cursor: default }
+
+form.ask { display: grid; gap: 10px; background: var(--soft); border-radius: 6px; padding: 12px 14px }
+form.ask fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 6px }
+form.ask legend { font-weight: 700; margin-bottom: 4px }
+form.ask label.choice { display: flex; gap: 8px; align-items: flex-start }
+form.ask input[type=text], form.ask textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper) }
+form.ask textarea { min-height: 4.5rem; resize: vertical }
+.err { color: var(--no); font-size: .9rem; margin: 0 }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 6px; font-weight: 700; z-index: 20 }
+
+.empty { background: var(--paper); border: 1px dashed var(--rule); border-radius: 8px; padding: 28px 20px; display: grid; gap: 8px; text-align: left }
+.empty p { margin: 0; max-width: 38rem }
+footer { font-size: .85rem; color: var(--muted) }
+@media (prefers-reduced-motion: no-preference) { .q { transition: border-color .15s } .q:hover { border-color: var(--muted) } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow">Build questions</span>
+    <h1 id="title">Build Questions</h1>
+    <div class="sub"><span id="repo" class="mono"></span><span id="updated"></span><span id="who"></span></div>
+  </header>
+
+  <div class="strip" id="strip">
+    <div><b id="n-q">–</b><span>questions answered</span></div>
+    <div><b id="n-decided">–</b><span>decided by Claude</span></div>
+    <div class="hot"><b id="n-open">–</b><span>change requests open</span></div>
+    <div><b id="n-changed">–</b><span>answers changed</span></div>
+  </div>
+
+  <div class="banner" id="banner" hidden>
+    <p id="banner-text"></p>
+    <button class="btn ghost" id="banner-go" type="button" style="border-color:currentColor;color:inherit">Review them</button>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-all" aria-selected="true" type="button">All questions<span class="count" id="c-all"></span></button>
+    <button class="tab" role="tab" id="tab-changes" aria-selected="false" type="button">Change requests<span class="count" id="c-changes"></span></button>
+  </div>
+
+  <div class="tools" id="tools">
+    <input id="search" type="search" placeholder="Search questions and answers" aria-label="Search questions and answers">
+    <select id="topic" aria-label="Topic"><option value="">All topics</option></select>
+    <select id="status-filter" aria-label="Show" hidden>
+      <option value="active">Open and accepted</option>
+      <option value="all">All requests</option>
+    </select>
+  </div>
+
+  <main class="list" id="list" aria-live="polite">
+    <div class="empty" id="loading">
+      <h2>Loading the questions…</h2>
+      <p class="muted">Each question Claude asked while building this project appears here with the answer it was given.</p>
+    </div>
+  </main>
+
+  <footer>
+    <p>Recorded by the build-questions plugin. Reviewers with Contributor access can request a change to any answer;
+      the project owner is emailed and decides. Accepted changes are made in the build and the answer here is updated.</p>
+  </footer>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const state = { questions: [], requests: [], meta: {}, me: null, canEdit: false, user: null, db: null,
+                  view: "all", openForm: null, names: {}, loaded: { q: false, r: false } };
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); };
+  const qnum = (q) => "Q" + String(q.n || 0).padStart(3, "0");
+  const toast = (msg) => { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2600); };
+  const nameOf = (id) => (id && state.names[id]) || (id === state.me ? "You" : "A reviewer");
+
+  // ---------- routing
+  function setView(v) {
+    state.view = v;
+    $("tab-all").setAttribute("aria-selected", v === "all");
+    $("tab-changes").setAttribute("aria-selected", v === "changes");
+    $("status-filter").hidden = v !== "changes";
+    $("topic").hidden = v !== "all";
+    const want = v === "changes" ? "#changes" : "";
+    if (location.hash !== want) history.replaceState(null, "", want || location.pathname + location.search);
+    render();
+  }
+  $("tab-all").onclick = () => setView("all");
+  $("tab-changes").onclick = () => setView("changes");
+  $("banner-go").onclick = () => setView("changes");
+  window.addEventListener("hashchange", () => setView(location.hash === "#changes" ? "changes" : "all"));
+  $("search").oninput = render;
+  $("topic").onchange = render;
+  $("status-filter").onchange = render;
+
+  // ---------- derived
+  const reqsFor = (qid) => state.requests.filter((r) => r.question_id === qid);
+  const isActive = (r) => r.status === "open" || r.status === "accepted";
+
+  function matches(q, term) {
+    if (!term) return true;
+    const hay = [q.question, q.answer, q.topic, q.notes, qnum(q), ...(q.options || []).map((o) => o.label)].join(" ").toLowerCase();
+    return hay.includes(term);
+  }
+
+  // ---------- render
+  function renderSummary() {
+    const answered = state.questions.filter((q) => q.answer).length;
+    const open = state.requests.filter((r) => r.status === "open").length;
+    const active = state.requests.filter(isActive).length;
+    $("n-q").textContent = answered;
+    $("n-decided").textContent = state.questions.filter((q) => q.source === "decided").length;
+    $("n-open").textContent = open;
+    $("n-changed").textContent = state.questions.filter((q) => q.status === "changed").length;
+    $("c-all").textContent = state.questions.length;
+    $("c-changes").textContent = active;
+    if (state.meta.title) { $("title").textContent = state.meta.title; }
+    $("repo").textContent = state.meta.repo || "";
+    $("updated").textContent = state.meta.updated_at ? "Updated " + fmtDate(state.meta.updated_at) : "";
+    const b = $("banner");
+    if (open && state.canEdit) {
+      $("banner-text").textContent = `${open} change request${open > 1 ? "s are" : " is"} waiting for your decision. Accept one and Claude makes the change in the build.`;
+      b.hidden = false;
+    } else b.hidden = true;
+    const topics = [...new Set(state.questions.map((q) => q.topic).filter(Boolean))].sort();
+    const sel = $("topic"), cur = sel.value;
+    sel.innerHTML = '<option value="">All topics</option>' + topics.map((t) => `<option${t === cur ? " selected" : ""}>${esc(t)}</option>`).join("");
+  }
+
+  function reqHtml(r, withQuestion) {
+    const q = state.questions.find((x) => x.id === r.question_id);
+    const mine = r.by && r.by === state.me;
+    let acts = "";
+    if (r.status === "open" && state.canEdit) acts += `<button class="btn" data-act="accept" data-id="${esc(r._id)}" type="button">Accept change</button><button class="btn ghost" data-act="decline" data-id="${esc(r._id)}" type="button">Keep current answer</button>`;
+    if (r.status === "open" && mine) acts += `<button class="btn quiet" data-act="withdraw" data-id="${esc(r._id)}" type="button">Withdraw</button>`;
+    const statusText = { open: "Open", accepted: "Accepted, being made", declined: "Kept as is", applied: "Changed" }[r.status] || r.status;
+    return `<div class="req">
+      ${withQuestion && q ? `<div class="q-head"><span class="q-num">${qnum(q)}</span>${q.topic ? `<span class="topic">${esc(q.topic)}</span>` : ""}</div><p class="q-text">${esc(q.question)}</p>` : ""}
+      ${withQuestion && !q ? `<p class="q-text">${esc(r.question || "Question")}</p>` : ""}
+      <div class="req-line"><span class="pill ${esc(r.status)}">${esc(statusText)}</span>
+        <span class="muted">${esc(nameOf(r.by))} · ${esc(fmtDate(r.created_at))}</span></div>
+      <p>Proposed: <b>${esc(r.proposed || "A different answer")}</b>${withQuestion ? ` <span class="muted">(now: ${esc(r.current_answer || (q && q.answer) || "none")})</span>` : ""}</p>
+      ${r.reason ? `<p class="muted">“${esc(r.reason)}”</p>` : ""}
+      ${r.decision_note ? `<p class="muted">Owner: ${esc(r.decision_note)}</p>` : ""}
+      ${r.resolution ? `<p>${esc(r.resolution)}${r.link && /^https:\/\//.test(r.link) ? ` · <a href="${esc(r.link)}" target="_blank" rel="noopener">See the change</a>` : ""}</p>` : ""}
+      ${acts ? `<div class="actions">${acts}</div>` : ""}
+    </div>`;
+  }
+
+  function formHtml(q) {
+    const others = (q.options || []).filter((o) => o.label && o.label !== q.answer);
+    return `<form class="ask" data-qid="${esc(q.id)}">
+      <fieldset><legend>What should the answer be?</legend>
+        ${others.map((o, i) => `<label class="choice"><input type="radio" name="p-${esc(q.id)}" id="p-${esc(q.id)}-${i}" value="${esc(o.label)}"><span>${esc(o.label)}${o.description ? ` <span class="muted">· ${esc(o.description)}</span>` : ""}</span></label>`).join("")}
+        <label class="choice"><input type="radio" name="p-${esc(q.id)}" id="p-${esc(q.id)}-other" value="__other" ${others.length ? "" : "checked"}><span>Something else</span></label>
+        <input type="text" id="o-${esc(q.id)}" placeholder="Describe the answer you want" aria-label="Your answer">
+      </fieldset>
+      <label for="w-${esc(q.id)}"><b>Why?</b> <span class="muted">The owner sees this in the email.</span></label>
+      <textarea id="w-${esc(q.id)}" placeholder="What changed, or what the current answer gets wrong"></textarea>
+      <p class="err" hidden></p>
+      <div class="actions"><button class="btn" type="submit">Send change request</button><button class="btn quiet" type="button" data-act="cancel">Cancel</button></div>
+    </form>`;
+  }
+
+  function questionHtml(q) {
+    const reqs = reqsFor(q.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const marked = reqs.some(isActive);
+    const prev = (q.history || []).slice(-1)[0];
+    const labelText = q.source === "decided" ? "Claude decided" : q.status === "changed" ? "Answer, changed" : "Answer";
+    const chosen = new Set(String(q.answer || "").split(",").map((s) => s.trim()));
+    return `<article class="q" id="${esc(q.id)}">
+      <div class="q-head"><span class="q-num">${qnum(q)}</span>${q.topic ? `<span class="topic">${esc(q.topic)}</span>` : ""}
+        <span>${esc(fmtDate(q.asked_at))}</span>${q.source === "decided" ? '<span class="pill decided">Decided by Claude</span>' : ""}
+        ${q.source === "prose" ? '<span class="muted">asked in chat</span>' : ""}</div>
+      <p class="q-text">${esc(q.question)}</p>
+      ${(q.options || []).length ? `<ul class="opts" aria-label="Options offered">${q.options.map((o) => `<li class="${chosen.has(o.label) ? "chosen" : ""}" title="${esc(o.description)}">${esc(o.label)}</li>`).join("")}</ul>` : ""}
+      <div class="answer${marked ? " marked" : ""}"><span class="label">${labelText}${marked ? " · change requested" : ""}</span>
+        <span class="val">${esc(q.answer || "No answer recorded")}</span>
+        ${prev ? `<span class="was">Was: ${esc(prev.answer)}</span>` : ""}</div>
+      ${q.notes ? `<p class="notes">${esc(q.notes)}</p>` : ""}
+      ${reqs.length ? `<div class="reqs">${reqs.map((r) => reqHtml(r, false)).join("")}</div>` : ""}
+      ${state.openForm === q.id ? formHtml(q) : (state.me ? `<div class="actions"><button class="btn ghost" data-act="ask" data-id="${esc(q.id)}" type="button">Request a change</button></div>` : "")}
+    </article>`;
+  }
+
+  function render() {
+    renderSummary();
+    const list = $("list");
+    if (!state.loaded.q) return;
+    const term = $("search").value.trim().toLowerCase();
+    if (state.view === "changes") {
+      const showAll = $("status-filter").value === "all";
+      const rs = state.requests.filter((r) => showAll || isActive(r))
+        .filter((r) => { const q = state.questions.find((x) => x.id === r.question_id); return !term || (q ? matches(q, term) : String(r.question).toLowerCase().includes(term)) || String(r.proposed).toLowerCase().includes(term); })
+        .sort((a, b) => (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) || String(b.created_at).localeCompare(String(a.created_at)));
+      list.innerHTML = rs.length ? rs.map((r) => `<article class="q">${reqHtml(r, true)}</article>`).join("")
+        : `<div class="empty"><h2>No ${showAll ? "" : "open "}change requests</h2><p class="muted">When a reviewer asks to change an answer, it appears here and the owner is emailed. Open any question under All questions and press Request a change.</p></div>`;
+      return;
+    }
+    const topic = $("topic").value;
+    const qs = state.questions.filter((q) => (!topic || q.topic === topic) && matches(q, term));
+    if (!state.questions.length) {
+      list.innerHTML = `<div class="empty"><h2>No questions recorded yet</h2><p class="muted">As Claude builds this project, every question it asks and the answer it gets appears here, numbered in the order asked. Questions asked before the plugin was on can be added with <span class="mono">/build-questions:backfill</span>.</p></div>`;
+      return;
+    }
+    list.innerHTML = qs.length ? qs.map(questionHtml).join("") : `<div class="empty"><h2>Nothing matches</h2><p class="muted">Try another word or clear the topic filter.</p></div>`;
+    if (state.openForm) { const f = list.querySelector(`form[data-qid="${CSS.escape(state.openForm)}"] input[type=text]`); if (f && document.activeElement === document.body) f.focus(); }
+  }
+
+  // ---------- actions
+  $("list").addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-act]");
+    if (!b) return;
+    const act = b.dataset.act, id = b.dataset.id;
+    if (act === "ask") { state.openForm = id; render(); return; }
+    if (act === "cancel") { state.openForm = null; render(); return; }
+    if (!state.db) return;
+    b.disabled = true;
+    try {
+      const ref = state.db.doc("requests/" + id);
+      const now = new Date().toISOString();
+      if (act === "accept") { await ref.update({ status: "accepted", decided_by: state.me || "owner", decided_at: now }); toast("Accepted. Claude makes the change at the next run."); }
+      if (act === "decline") { await ref.update({ status: "declined", decided_by: state.me || "owner", decided_at: now }); toast("Kept the current answer"); }
+      if (act === "withdraw") { await ref.delete(); toast("Request withdrawn"); }
+    } catch (err) { b.disabled = false; toast(writeError(err)); }
+  });
+
+  $("list").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target, qid = f.dataset.qid;
+    const q = state.questions.find((x) => x.id === qid);
+    const errEl = f.querySelector(".err");
+    const pick = f.querySelector(`input[name="p-${CSS.escape(qid)}"]:checked`);
+    const other = f.querySelector("input[type=text]").value.trim();
+    const reason = f.querySelector("textarea").value.trim();
+    const proposed = pick && pick.value !== "__other" ? pick.value : other;
+    if (!proposed && !reason) { errEl.textContent = "Choose an answer or say what should change."; errEl.hidden = false; return; }
+    const btn = f.querySelector("button[type=submit]"); btn.disabled = true;
+    try {
+      await state.db.collection("requests").add({
+        question_id: qid, question: q ? q.question : "", current_answer: q ? q.answer || "" : "",
+        proposed: proposed.slice(0, 500), reason: reason.slice(0, 2000), by: state.me || "", created_at: new Date().toISOString(),
+        status: "open", notified_at: null,
+      });
+      state.openForm = null; toast("Change request sent. The owner will be emailed."); render();
+    } catch (err) { btn.disabled = false; errEl.textContent = writeError(err); errEl.hidden = false; }
+  });
+
+  function writeError(err) {
+    const c = err && err.code;
+    if (c === "not_granted" || c === "revoked") return "You can read this page but not request changes. Ask the owner for Contributor access.";
+    if (c === "unavailable") return "Couldn't reach the page's storage. Check your connection and try again.";
+    return "That didn't save. Try again in a moment.";
+  }
+
+  // ---------- data
+  async function resolveNames() {
+    if (!state.user) return;
+    const ids = [...new Set(state.requests.map((r) => r.by).filter(Boolean))].filter((id) => !(id in state.names));
+    if (!ids.length) return;
+    try { const ps = await state.user.profiles(ids); for (const id of ids) state.names[id] = (ps[id] && ps[id].name) || ""; render(); } catch (_) {}
+  }
+
+  function failLoading(msg) {
+    if (state.loaded.q) return;
+    $("list").innerHTML = `<div class="empty"><h2>The questions couldn't load</h2><p class="muted">${esc(msg)}</p></div>`;
+  }
+
+  async function start() {
+    const timer = setTimeout(() => failLoading("The page's storage didn't answer. Reload the page, or sign in to claude.ai if you aren't."), 10000);
+    if (location.hash === "#changes") setView("changes");
+    const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
+    state.user = user;
+    if (user) {
+      try { state.canEdit = await user.canEdit(); } catch (_) {}
+      try { state.me = await user.id(); } catch (_) {}
+    }
+    if (!db) { clearTimeout(timer); failLoading("Sign in to claude.ai with an account this page is shared with to see the questions."); return; }
+    state.db = db;
+    db.doc("meta/project").onSnapshot((s) => { state.meta = (s.exists && s.data()) || {}; renderSummary(); }, () => {});
+    db.collection("questions").onSnapshot((snap) => {
+      clearTimeout(timer);
+      state.questions = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.n || 0) - (b.n || 0) || String(a.asked_at).localeCompare(String(b.asked_at)));
+      state.loaded.q = true; render();
+    }, (e) => { clearTimeout(timer); failLoading(e && e.code === "not_granted" ? "This page hasn't been shared with you." : "Reload the page to try again."); });
+    db.collection("requests").onSnapshot((snap) => {
+      state.requests = snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
+      state.loaded.r = true; render(); resolveNames();
+    }, () => {});
+  }
+
+  if (window.claude && claude.use) start();
+  else failLoading("Open this page on claude.ai to see the questions.");
+})();
+</script>

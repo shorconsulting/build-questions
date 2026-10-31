@@ -1,0 +1,13 @@
+{
+  "name": "build-questions",
+  "displayName": "Build Questions",
+  "version": "0.1.0",
+  "description": "Records every question Claude asks during a build and the answer given, publishes them on a review page where reviewers can request a change, and emails the owner when they do.",
+  "author": {
+    "name": "David Shor",
+    "url": "https://github.com/shorconsulting"
+  },
+  "homepage": "https://github.com/shorconsulting/marketplace/tree/main/plugins/build-questions",
+  "repository": "https://github.com/shorconsulting/marketplace",
+  "keywords": ["decisions", "questions", "review", "change-requests", "audit-trail"]
+}
