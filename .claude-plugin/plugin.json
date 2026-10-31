@@ -95,5 +95,9 @@
         "BQ_SMTP_PASSWORD": "${user_config.smtp_password}"
       }
     }
-  }
+  },
+  "documentationUrl": "https://github.com/shorconsulting/build-questions#readme",
+  "supportUrl": "https://github.com/shorconsulting/build-questions/issues",
+  "privacyPolicyUrl": "https://github.com/shorconsulting/build-questions/blob/main/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/shorconsulting/build-questions/blob/main/TERMS.md"
 }

@@ -125,6 +125,7 @@ page/build-questions.html       the review page template
 Tests: `python3 -m unittest discover -s scripts -p 'test_*.py'` (Windows: `py -m unittest ...`). CI runs them on
 Linux, macOS and Windows with Python 3.10 and 3.13.
 
-## License
+## License, privacy and support
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE), the [privacy policy](PRIVACY.md) and the [terms of use](TERMS.md). Support:
+[GitHub issues](https://github.com/shorconsulting/build-questions/issues).
