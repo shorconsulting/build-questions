@@ -12,8 +12,8 @@ own section below. The plugin folder is `${CLAUDE_PLUGIN_ROOT}`; the script is
 - **The page.** Each repo (project) has one review page: a claude.ai artifact with a database. Its link is
   `projects.<owner/repo>.artifact` in `~/.build-questions/config.json` (`bq.py status` shows it). Reviewers read
   every question there and press **Request a change** on any answer.
-- **Notifications.** When a reviewer requests a change, the owner sees it on the page at once (a banner and the
-  **Change requests** tab), and you email them at the next `check`: run by a scheduled task, at the start of
+- **Notifications.** When a reviewer requests a change, the owner sees it on the page at once (a banner, and the question moves from
+  **Settled questions** to **Open questions**), and you email them at the next `check`: run by a scheduled task, at the start of
   build work in the repo, or by hand.
 
 Commands that take a repo default to the current checkout's (`bq.py repo`).
@@ -117,7 +117,7 @@ Finds new change requests, notifies the owner, and reports. Unattended-safe: it 
 ## changes
 
 Shows the change requests in chat. Arguments: `--all` to include declined and applied ones; `--page` to open the
-page on its Change requests tab instead.
+page on its Open questions tab instead.
 
 1. `query` `requests` (open and accepted by default). For each, also `get` its `questions/<question_id>`.
 2. Print one compact block per request, newest first:
@@ -129,7 +129,7 @@ page on its Change requests tab instead.
    Why: "We expect 40 concurrent staff users"
    ```
 
-3. With `--page`, `open` the page with the Artifact tool and give the link with `#changes` appended.
+3. With `--page`, `open` the page with the Artifact tool and give the link with `#open` appended.
 4. If any are `open` and the person is here, offer to go through them now (see `resolve`).
 
 ## resolve

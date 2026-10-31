@@ -1,5 +1,5 @@
 ---
-description: List the answers reviewers asked to change, in chat (--all for settled ones, --page to open the page)
+description: List the answers reviewers asked to change, in chat (--all for settled ones, --page to open the page's Open questions tab)
 ---
 
 # /build-questions:changes

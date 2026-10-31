@@ -109,6 +109,28 @@ form.ask textarea { min-height: 4.5rem; resize: vertical }
 .err { color: var(--no); font-size: .9rem; margin: 0 }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 6px; font-weight: 700; z-index: 20 }
 
+/* Settled: one dense row per question. Number | question | answer | action */
+.rows { background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden }
+.row { display: grid; grid-template-columns: 3.4rem minmax(0, 1.3fr) minmax(0, 1fr) auto; gap: 4px 14px;
+  align-items: baseline; padding: 9px 14px; border-top: 1px solid var(--rule) }
+.row:first-child { border-top: 0 }
+.row .q-num { font-size: .78rem; color: var(--muted) }
+.row .rq { margin: 0; font-size: .95rem; line-height: 1.35; overflow-wrap: anywhere }
+.row .ra { margin: 0; font-weight: 700; font-size: .95rem; line-height: 1.35; overflow-wrap: anywhere }
+.row .ra .pill { margin-left: 6px; vertical-align: 1px }
+.row .btn { padding: 3px 9px; font-size: .82rem; white-space: nowrap }
+.row form.ask { grid-column: 1 / -1; margin-top: 6px }
+.rows-head { display: grid; grid-template-columns: 3.4rem minmax(0, 1.3fr) minmax(0, 1fr) auto; gap: 14px; padding: 8px 14px;
+  font: 700 .68rem/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--rule); background: var(--soft) }
+.rows-head span:last-child { visibility: hidden }
+@media (max-width: 640px) {
+  .row { grid-template-columns: minmax(0, 1fr) auto; }
+  .row .q-num { grid-column: 1 / -1 }
+  .row .rq { grid-column: 1 }
+  .row .ra { grid-column: 1; grid-row: 3 }
+  .row .btn { grid-column: 2; grid-row: 2 / span 2; align-self: center }
+  .rows-head { display: none }
+}
 .empty { background: var(--paper); border: 1px dashed var(--rule); border-radius: 8px; padding: 28px 20px; display: grid; gap: 8px; text-align: left }
 .empty p { margin: 0; max-width: 38rem }
 footer { font-size: .85rem; color: var(--muted) }
@@ -135,17 +157,13 @@ footer { font-size: .85rem; color: var(--muted) }
   </div>
 
   <div class="tabs" role="tablist">
-    <button class="tab" role="tab" id="tab-all" aria-selected="true" type="button">All questions<span class="count" id="c-all"></span></button>
-    <button class="tab" role="tab" id="tab-changes" aria-selected="false" type="button">Change requests<span class="count" id="c-changes"></span></button>
+    <button class="tab" role="tab" id="tab-open" aria-selected="true" type="button">Open questions<span class="count" id="c-open"></span></button>
+    <button class="tab" role="tab" id="tab-settled" aria-selected="false" type="button">Settled questions<span class="count" id="c-settled"></span></button>
   </div>
 
   <div class="tools" id="tools">
     <input id="search" type="search" placeholder="Search questions and answers" aria-label="Search questions and answers">
     <select id="topic" aria-label="Topic"><option value="">All topics</option></select>
-    <select id="status-filter" aria-label="Show" hidden>
-      <option value="active">Open and accepted</option>
-      <option value="all">All requests</option>
-    </select>
   </div>
 
   <main class="list" id="list" aria-live="polite">
@@ -166,7 +184,7 @@ footer { font-size: .85rem; color: var(--muted) }
 (() => {
   const $ = (id) => document.getElementById(id);
   const state = { questions: [], requests: [], meta: {}, me: null, canEdit: false, user: null, db: null,
-                  view: "all", openForm: null, names: {}, loaded: { q: false, r: false } };
+                  view: "open", viewChosen: false, openForm: null, names: {}, loaded: { q: false, r: false } };
 
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }); };
@@ -175,27 +193,28 @@ footer { font-size: .85rem; color: var(--muted) }
   const nameOf = (id) => (id && state.names[id]) || (id === state.me ? "You" : "A reviewer");
 
   // ---------- routing
-  function setView(v) {
+  const viewFromHash = () => (location.hash === "#settled" ? "settled" : (location.hash === "#open" || location.hash === "#changes") ? "open" : null);
+  function setView(v, fromUser = true) {
     state.view = v;
-    $("tab-all").setAttribute("aria-selected", v === "all");
-    $("tab-changes").setAttribute("aria-selected", v === "changes");
-    $("status-filter").hidden = v !== "changes";
-    $("topic").hidden = v !== "all";
-    const want = v === "changes" ? "#changes" : "";
-    if (location.hash !== want) history.replaceState(null, "", want || location.pathname + location.search);
+    if (fromUser) state.viewChosen = true;
+    $("tab-open").setAttribute("aria-selected", v === "open");
+    $("tab-settled").setAttribute("aria-selected", v === "settled");
+    const want = "#" + v;
+    if (fromUser && location.hash !== want) history.replaceState(null, "", want);
     render();
   }
-  $("tab-all").onclick = () => setView("all");
-  $("tab-changes").onclick = () => setView("changes");
-  $("banner-go").onclick = () => setView("changes");
-  window.addEventListener("hashchange", () => setView(location.hash === "#changes" ? "changes" : "all"));
+  $("tab-open").onclick = () => setView("open");
+  $("tab-settled").onclick = () => setView("settled");
+  $("banner-go").onclick = () => setView("open");
+  window.addEventListener("hashchange", () => { const v = viewFromHash(); if (v) setView(v); });
   $("search").oninput = render;
   $("topic").onchange = render;
-  $("status-filter").onchange = render;
 
   // ---------- derived
   const reqsFor = (qid) => state.requests.filter((r) => r.question_id === qid);
   const isActive = (r) => r.status === "open" || r.status === "accepted";
+  // Open: no answer yet, or a change request still waiting on a decision or on the build.
+  const isOpenQ = (q) => !q.answer || reqsFor(q.id).some(isActive);
 
   function matches(q, term) {
     if (!term) return true;
@@ -212,8 +231,9 @@ footer { font-size: .85rem; color: var(--muted) }
     $("n-decided").textContent = state.questions.filter((q) => q.source === "decided").length;
     $("n-open").textContent = open;
     $("n-changed").textContent = state.questions.filter((q) => q.status === "changed").length;
-    $("c-all").textContent = state.questions.length;
-    $("c-changes").textContent = active;
+    const nOpen = state.questions.filter(isOpenQ).length;
+    $("c-open").textContent = nOpen;
+    $("c-settled").textContent = state.questions.length - nOpen;
     if (state.meta.title) { $("title").textContent = state.meta.title; }
     $("repo").textContent = state.meta.repo || "";
     $("updated").textContent = state.meta.updated_at ? "Updated " + fmtDate(state.meta.updated_at) : "";
@@ -283,28 +303,47 @@ footer { font-size: .85rem; color: var(--muted) }
     </article>`;
   }
 
+  function rowHtml(q) {
+    const changed = q.status === "changed";
+    const prev = (q.history || []).slice(-1)[0];
+    return `<div class="row" id="${esc(q.id)}">
+      <span class="q-num mono">${qnum(q)}</span>
+      <p class="rq">${esc(q.question)}</p>
+      <p class="ra"${prev ? ` title="Was: ${esc(prev.answer)}"` : ""}>${esc(q.answer)}${changed ? '<span class="pill applied">Changed</span>' : ""}${q.source === "decided" ? '<span class="pill decided">Claude</span>' : ""}</p>
+      ${state.openForm === q.id ? formHtml(q) : (state.me ? `<button class="btn ghost" data-act="ask" data-id="${esc(q.id)}" type="button" aria-label="Request a change to ${qnum(q)}">Request a change</button>` : "<span></span>")}
+    </div>`;
+  }
+
   function render() {
     renderSummary();
     const list = $("list");
     if (!state.loaded.q) return;
-    const term = $("search").value.trim().toLowerCase();
-    if (state.view === "changes") {
-      const showAll = $("status-filter").value === "all";
-      const rs = state.requests.filter((r) => showAll || isActive(r))
-        .filter((r) => { const q = state.questions.find((x) => x.id === r.question_id); return !term || (q ? matches(q, term) : String(r.question).toLowerCase().includes(term)) || String(r.proposed).toLowerCase().includes(term); })
-        .sort((a, b) => (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) || String(b.created_at).localeCompare(String(a.created_at)));
-      list.innerHTML = rs.length ? rs.map((r) => `<article class="q">${reqHtml(r, true)}</article>`).join("")
-        : `<div class="empty"><h2>No ${showAll ? "" : "open "}change requests</h2><p class="muted">When a reviewer asks to change an answer, it appears here and the owner is emailed. Open any question under All questions and press Request a change.</p></div>`;
-      return;
+    if (!state.viewChosen && state.loaded.r && state.questions.length) {
+      // First load: open the tab that has something in it.
+      const v = state.questions.some(isOpenQ) ? "open" : "settled";
+      if (v !== state.view) { setView(v, false); return; }
     }
-    const topic = $("topic").value;
-    const qs = state.questions.filter((q) => (!topic || q.topic === topic) && matches(q, term));
     if (!state.questions.length) {
       list.innerHTML = `<div class="empty"><h2>No questions recorded yet</h2><p class="muted">As Claude builds this project, every question it asks and the answer it gets appears here, numbered in the order asked. Questions asked before the plugin was on can be added with <span class="mono">/build-questions:backfill</span>.</p></div>`;
       return;
     }
-    list.innerHTML = qs.length ? qs.map(questionHtml).join("") : `<div class="empty"><h2>Nothing matches</h2><p class="muted">Try another word or clear the topic filter.</p></div>`;
-    if (state.openForm) { const f = list.querySelector(`form[data-qid="${CSS.escape(state.openForm)}"] input[type=text]`); if (f && document.activeElement === document.body) f.focus(); }
+    const term = $("search").value.trim().toLowerCase();
+    const topic = $("topic").value;
+    const shown = state.questions.filter((q) => (!topic || q.topic === topic) && matches(q, term));
+    if (state.view === "open") {
+      const qs = shown.filter(isOpenQ).sort((a, b) => {
+        const ra = reqsFor(a.id).some((r) => r.status === "open") ? 0 : 1, rb = reqsFor(b.id).some((r) => r.status === "open") ? 0 : 1;
+        return ra - rb || (a.n || 0) - (b.n || 0);
+      });
+      list.innerHTML = qs.length ? qs.map(questionHtml).join("")
+        : `<div class="empty"><h2>Nothing open</h2><p class="muted">Every question has an answer and no change is waiting. When a reviewer requests a change on a settled question, it moves here and the owner is emailed.</p></div>`;
+    } else {
+      const qs = shown.filter((q) => !isOpenQ(q));
+      list.innerHTML = qs.length
+        ? `<div class="rows" role="list"><div class="rows-head" aria-hidden="true"><span>No.</span><span>Question</span><span>Answer</span><span>Request a change</span></div>${qs.map(rowHtml).join("")}</div>`
+        : `<div class="empty"><h2>${term || topic ? "Nothing matches" : "No settled questions yet"}</h2><p class="muted">${term || topic ? "Try another word or clear the topic filter." : "Answered questions with no pending change appear here."}</p></div>`;
+    }
+    if (state.openForm) { const f = list.querySelector(`form[data-qid="${CSS.escape(state.openForm)}"] input[type=text]`); if (f && !f.dataset.focused) { f.dataset.focused = "1"; f.focus(); } }
   }
 
   // ---------- actions
@@ -342,7 +381,7 @@ footer { font-size: .85rem; color: var(--muted) }
         proposed: proposed.slice(0, 500), reason: reason.slice(0, 2000), by: state.me || "", created_at: new Date().toISOString(),
         status: "open", notified_at: null,
       });
-      state.openForm = null; toast("Change request sent. The owner will be emailed."); render();
+      state.openForm = null; toast("Change request sent. It's now under Open questions, and the owner will be emailed."); render();
     } catch (err) { btn.disabled = false; errEl.textContent = writeError(err); errEl.hidden = false; }
   });
 
@@ -368,7 +407,7 @@ footer { font-size: .85rem; color: var(--muted) }
 
   async function start() {
     const timer = setTimeout(() => failLoading("The page's storage didn't answer. Reload the page, or sign in to claude.ai if you aren't."), 10000);
-    if (location.hash === "#changes") setView("changes");
+    const hv = viewFromHash(); if (hv) setView(hv);
     const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
     state.user = user;
     if (user) {

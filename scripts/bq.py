@@ -410,7 +410,7 @@ def compose_email(requests: list[dict], repo: str, page: str) -> tuple[str, str]
         if r.get("by_name"):
             lines.append(f"  From: {r['by_name']}")
         lines.append("")
-    lines += [f"Review them on the page: {page}#changes",
+    lines += [f"Review them on the page: {page}#open",
               "Or, in Claude Code inside this repo: /build-questions:changes", "",
               "Sent by the build-questions plugin."]
     return subject, "\n".join(lines)

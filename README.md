@@ -5,11 +5,12 @@ A Claude Code plugin that keeps a reviewable record of every decision made while
 - **Records** every question Claude asks (with `AskUserQuestion`), the options it offered and the answer, by a
   hook, so nothing depends on Claude remembering. Questions asked in plain chat, and decisions Claude made without
   asking, are recorded by the skill.
-- **Publishes** them on a review page per project (a claude.ai artifact), numbered in the order asked and filterable
-  by topic.
+- **Publishes** them on a review page per project (a claude.ai artifact) with two tabs: **Open questions** (no
+  answer yet, or a change request pending) as full cards, and **Settled questions** as one compact row each:
+  question, answer, and a Request a change button.
 - **Lets reviewers request a change** to any answer: proposed answer and reason.
-- **Notifies the owner** by email (the address chosen at setup) and in the interface: a banner and a
-  **Change requests** tab on the page, a note at the start of every Claude session in the repo, and
+- **Notifies the owner** by email (the address chosen at setup) and in the interface: a banner and the
+  **Open questions** tab on the page, a note at the start of every Claude session in the repo, and
   `/build-questions:changes` in chat.
 - **Closes the loop**: the owner accepts or keeps each request (on the page or in chat); Claude makes accepted changes
   in the build, marks the answer changed (keeping the old one), and links the PR.
@@ -32,7 +33,7 @@ Needs `python3` and `git`. Then, inside the repo being built: `/build-questions:
 | `/build-questions:setup` | Sets the notification email and how it's sent, links the repo to a review page (or publishes one), offers the hourly check |
 | `/build-questions:sync` | Copies recorded questions that aren't on the page yet |
 | `/build-questions:check` | Finds new change requests, emails the owner, reports. Safe unattended: use it as the scheduled task |
-| `/build-questions:changes [--all] [--page]` | Lists requested changes in chat, or opens the page on its Change requests tab |
+| `/build-questions:changes [--all] [--page]` | Lists requested changes in chat, or opens the page on its Open questions tab |
 | `/build-questions:resolve [Q014]` | Asks the owner to accept or keep each request, then applies the accepted ones |
 | `/build-questions:backfill` | Recovers questions from this project's past transcripts |
 | `/build-questions:export [path]` | Writes the decision log into the repo as Markdown |

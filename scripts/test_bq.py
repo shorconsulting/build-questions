@@ -185,7 +185,7 @@ class TestEmail(unittest.TestCase):
                                 "o/r", "https://claude.ai/artifact/x")
         self.assertIn("1 change request ", s)
         self.assertIn("Proposed: Postgres", b)
-        self.assertIn("https://claude.ai/artifact/x#changes", b)
+        self.assertIn("https://claude.ai/artifact/x#open", b)
 
     def test_missing_settings(self):
         with mock.patch.dict(os.environ, {}, clear=True):
