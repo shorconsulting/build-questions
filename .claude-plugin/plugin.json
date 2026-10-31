@@ -15,5 +15,6 @@
     "review",
     "change-requests",
     "audit-trail"
-  ]
+  ],
+  "icon": ".claude-plugin/icon.png"
 }
