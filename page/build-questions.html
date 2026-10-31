@@ -324,7 +324,7 @@ footer { font-size: .85rem; color: var(--muted) }
       if (v !== state.view) { setView(v, false); return; }
     }
     if (!state.questions.length) {
-      list.innerHTML = `<div class="empty"><h2>No questions recorded yet</h2><p class="muted">As Claude builds this project, every question it asks and the answer it gets appears here, numbered in the order asked. Questions asked before the plugin was on can be added with <span class="mono">/build-questions:backfill</span>.</p></div>`;
+      list.innerHTML = `<div class="empty"><h2>No questions recorded yet</h2><p class="muted">As Claude builds this project, every question it asks and the answer it gets appears here, numbered in the order asked. Questions asked before the plugin was on are gathered by <span class="mono">/build-questions:organize</span>.</p></div>`;
       return;
     }
     const term = $("search").value.trim().toLowerCase();
