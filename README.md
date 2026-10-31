@@ -31,9 +31,12 @@ See [CONCEPT.md](CONCEPT.md) for the design and the open questions.
 ## Install
 
 ```
-/plugin marketplace add shorconsulting/marketplace
-/plugin install build-questions@shorconsulting
+/plugin marketplace add shorconsulting/build-questions
+/plugin install build-questions@build-questions
 ```
+
+Shor Consulting accounts can also install it from the shared marketplace:
+`/plugin marketplace add shorconsulting/marketplace`, then `/plugin install build-questions@shorconsulting`.
 
 Needs `python3` and `git` (`gh` for issues). Then, inside the repo being built: `/build-questions:setup`.
 
@@ -88,7 +91,7 @@ repo. Credentials are never written to the page.
 ## Files
 
 ```
-.claude-plugin/plugin.json      manifest
+.claude-plugin/plugin.json      manifest (marketplace.json beside it: this repo is its own marketplace)
 hooks/hooks.json                capture (AskUserQuestion), stray check (Write/Edit), SessionStart note, Stop reminder
 scripts/bq.py                   central list, merge, scan, memory, hooks, page diff, email (stdlib only)
 scripts/test_bq.py              unit tests
@@ -99,3 +102,7 @@ page/build-questions.html       the review page template
 ```
 
 Tests: `python3 -m unittest discover -s scripts -p 'test_*.py'`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

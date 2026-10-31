@@ -7,8 +7,8 @@
     "name": "David Shor",
     "url": "https://github.com/shorconsulting"
   },
-  "homepage": "https://github.com/shorconsulting/marketplace/tree/main/plugins/build-questions",
-  "repository": "https://github.com/shorconsulting/marketplace",
+  "homepage": "https://github.com/shorconsulting/build-questions",
+  "repository": "https://github.com/shorconsulting/build-questions",
   "keywords": [
     "decisions",
     "questions",
@@ -17,5 +17,6 @@
     "audit-trail"
   ],
   "icon": ".claude-plugin/icon.png",
-  "license": "MIT"
+  "license": "MIT",
+  "documentationUrl": "https://github.com/shorconsulting/build-questions#readme"
 }

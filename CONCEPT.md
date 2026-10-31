@@ -59,9 +59,7 @@ flowchart LR
 
 ## Open questions for you
 
-- **Repo home.** Built in `shorconsulting/marketplace` under `plugins/build-questions`, because this session can't
-  create a new repo. Your other plugins each have their own repo; to match, create an empty
-  `shorconsulting/build-questions` and move this folder there, then point the marketplace entry at it.
+
 - **Email path.** Resend is the default recommendation. Fine, or would you rather standardise on SMTP from your
   Google Workspace, or route through something you already run?
 - **Reviewer access.** Requesting needs Contributor access on the artifact. Should Commenters be able to request too?
