@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: one reading column, like a reviewed questionnaire. Each answer sits in an answer box; a reviewer's
-   change request is a highlighter mark on that box. Summary strip, then tabs, then the list. */
+   change request is a soft apricot mark on that box. Summary strip, then tabs, then the list. */
 :root {
   --bg: #f3f5f8;
   --paper: #ffffff;
@@ -13,8 +13,8 @@
   --rule: #d9dee6;
   --accent: #2346a8;          /* ink-blue: links, buttons, focus */
   --accent-ink: #ffffff;
-  --mark: #ffe58a;            /* reviewer's highlighter: change requested */
-  --mark-ink: #4a3a00;
+  --mark: #ffe0cf;            /* soft apricot: change requested */
+  --mark-ink: #8a3412;
   --ok: #1d7a4c;
   --no: #8a3b3b;
   --soft: #e8ecf3;
@@ -24,11 +24,11 @@
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #11151c; --paper: #181e28; --ink: #e6ebf2; --muted: #9aa5b5; --rule: #2b3442;
-  --accent: #8fb0ff; --accent-ink: #0d1424; --mark: #6b5a12; --mark-ink: #fff2bf;
+  --accent: #8fb0ff; --accent-ink: #0d1424; --mark: #4f2a1c; --mark-ink: #ffd5bf;
   --ok: #6fd3a0; --no: #f0a0a0; --soft: #212a37; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #11151c; --paper: #181e28; --ink: #e6ebf2; --muted: #9aa5b5; --rule: #2b3442;
-  --accent: #8fb0ff; --accent-ink: #0d1424; --mark: #6b5a12; --mark-ink: #fff2bf;
+  --accent: #8fb0ff; --accent-ink: #0d1424; --mark: #4f2a1c; --mark-ink: #ffd5bf;
   --ok: #6fd3a0; --no: #f0a0a0; --soft: #212a37; color-scheme: dark }
 
 body { background: var(--bg); color: var(--ink); font: 16px/1.55 var(--f-body); }
