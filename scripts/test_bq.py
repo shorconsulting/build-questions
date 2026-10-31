@@ -40,11 +40,16 @@ class Base(unittest.TestCase):
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin",
                         "https://git.example.com/acme/app.git"], check=True)
-        self.env = mock.patch.dict(os.environ, {"BUILD_QUESTIONS_HOME": str(self.home), "HOME": str(t / "user")})
-        self.env.start()
+        self.user_home = t / "user"
+        # Point the plugin's folders at the temp dir.
+        self.patches = [mock.patch.object(bq, "home", lambda: self.home),
+                        mock.patch.object(bq.Path, "home", classmethod(lambda cls: self.user_home))]
+        for p in self.patches:
+            p.start()
 
     def tearDown(self):
-        self.env.stop()
+        for p in self.patches:
+            p.stop()
         self.tmp.cleanup()
 
     def enroll(self):
@@ -169,7 +174,7 @@ class TestStore(Base):
     def test_user_memory(self):
         res = json.loads(run(["memory", "--user", "--root", str(self.root)]))
         self.assertEqual(res, {"user": "created"})
-        self.assertIn("build-questions", (Path(os.environ["HOME"]) / ".claude" / "CLAUDE.md").read_text())
+        self.assertIn("build-questions", (self.user_home / ".claude" / "CLAUDE.md").read_text())
 
     def test_hand_appended_line_without_id_is_read(self):
         self.enroll()
@@ -359,15 +364,15 @@ class TestMailServer(unittest.TestCase):
         self.assertEqual(names, ["email_status", "send_email"])
 
     def test_status_and_refusals_without_options(self):
-        env = {"BQ_EMAIL": "a@b.c", "BQ_METHOD": "resend", "BQ_RESEND_API_KEY": "${user_config.resend_api_key}"}
-        with mock.patch.dict(os.environ, env, clear=True):
+        opts = {"BQ_EMAIL": "a@b.c", "BQ_METHOD": "resend"}
+        with mock.patch.object(self.m, "opt", lambda name: opts.get(name, "")):
             st = json.loads(self.call("email_status")["result"]["content"][0]["text"])
             self.assertEqual(st["missing_options"], ["resend_api_key"])
             self.assertNotIn("resend_key", st)
             r = self.call("send_email", {"subject": "s", "body": "b"})["result"]
             self.assertTrue(r["isError"])
             self.assertIn("resend_api_key", r["content"][0]["text"])
-        with mock.patch.dict(os.environ, {"BQ_METHOD": "none"}, clear=True):
+        with mock.patch.object(self.m, "opt", lambda name: {"BQ_METHOD": "none"}.get(name, "")):
             self.assertIn("nothing is sent", self.call("send_email", {"subject": "s", "body": "b"})["result"]["content"][0]["text"])
 
 

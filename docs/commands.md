@@ -3,7 +3,7 @@
 Each `/build-questions:<name>` command reads this file: the opening part (the pieces, the page's store), then its
 own section below. The plugin folder is `${CLAUDE_PLUGIN_ROOT}`; the script is
 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bq.py` (written `bq.py` below). Every `bq.py` command works on the current
-checkout; pass `--root <checkout>` to work on another.
+checkout; add `--root <checkout>` to work on another.
 
 ## The pieces
 
