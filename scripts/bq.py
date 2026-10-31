@@ -55,7 +55,7 @@ def home() -> Path:
 
 def load_config() -> dict:
     try:
-        return json.loads((home() / "config.json").read_text())
+        return json.loads((home() / "config.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
@@ -64,7 +64,7 @@ def save_config(cfg: dict) -> None:
     p = home() / "config.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cfg, indent=2, sort_keys=True) + "\n")
+    tmp.write_text(json.dumps(cfg, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     os.chmod(tmp, 0o600)
     tmp.replace(p)
 
@@ -131,7 +131,7 @@ def enrolled(root: Path | None) -> bool:
 
 def load_state(repo: str) -> dict:
     try:
-        return json.loads(state_path(repo).read_text())
+        return json.loads(state_path(repo).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
@@ -139,7 +139,7 @@ def load_state(repo: str) -> dict:
 def save_state(repo: str, st: dict) -> None:
     p = state_path(repo)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(st))
+    p.write_text(json.dumps(st), encoding="utf-8", newline="\n")
 
 
 # ---------------------------------------------------------------- records
@@ -191,7 +191,7 @@ def read_jsonl(path: Path, repo: str = "") -> list[dict]:
     best: dict[str, dict] = {}
     order: list[str] = []
     try:
-        with Path(path).open() as f:
+        with Path(path).open(encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -320,9 +320,9 @@ def write_store(root: Path, recs: list[dict], repo: str) -> None:
     d.mkdir(parents=True, exist_ok=True)
     recs = renumber(recs)
     tmp = store_file(root).with_suffix(".tmp")
-    tmp.write_text("".join(json.dumps(r, sort_keys=True, ensure_ascii=False) + "\n" for r in recs))
+    tmp.write_text("".join(json.dumps(r, sort_keys=True, ensure_ascii=False) + "\n" for r in recs), encoding="utf-8", newline="\n")
     tmp.replace(store_file(root))
-    (d / "QUESTIONS.md").write_text(render_md(recs, repo))
+    (d / "QUESTIONS.md").write_text(render_md(recs, repo), encoding="utf-8", newline="\n")
 
 
 def add_to_store(root: Path, repo: str, incoming: list[dict]) -> dict:
@@ -390,12 +390,12 @@ def ensure_gitattributes(root: Path) -> bool:
     p = Path(root) / ".gitattributes"
     line = f"{STORE_REL.as_posix()}/questions.jsonl merge=union"
     try:
-        cur = p.read_text()
+        cur = p.read_text(encoding="utf-8")
     except OSError:
         cur = ""
     if line in cur:
         return False
-    p.write_text(cur + ("" if not cur or cur.endswith("\n") else "\n") + line + "\n")
+    p.write_text(cur + ("" if not cur or cur.endswith("\n") else "\n") + line + "\n", encoding="utf-8", newline="\n")
     return True
 
 
@@ -443,19 +443,19 @@ USER_MEMORY_BLOCK = "\n".join([
 def upsert_block(path: Path, block: str) -> str:
     """Insert or replace the managed block. Returns 'created', 'updated' or 'unchanged'."""
     try:
-        cur = path.read_text()
+        cur = path.read_text(encoding="utf-8")
     except OSError:
         cur = None
     if cur is None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(block + "\n")
+        path.write_text(block + "\n", encoding="utf-8", newline="\n")
         return "created"
     pat = re.compile(re.escape(MEM_START) + r".*?" + re.escape(MEM_END), re.S)
     new = pat.sub(lambda _m: block, cur, count=1) if pat.search(cur) else \
         cur + ("" if cur.endswith("\n") else "\n") + ("\n" if cur.strip() else "") + block + "\n"
     if new == cur:
         return "unchanged"
-    path.write_text(new)
+    path.write_text(new, encoding="utf-8", newline="\n")
     return "updated"
 
 
@@ -484,14 +484,14 @@ def _sha(path: Path) -> str:
 
 def read_sources(root: Path) -> dict:
     try:
-        return json.loads((store_dir(root) / "sources.json").read_text())
+        return json.loads((store_dir(root) / "sources.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
 
 def write_sources(root: Path, src: dict) -> None:
     store_dir(root).mkdir(parents=True, exist_ok=True)
-    (store_dir(root) / "sources.json").write_text(json.dumps(src, indent=1, sort_keys=True) + "\n")
+    (store_dir(root) / "sources.json").write_text(json.dumps(src, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def scan_file(path: Path, rel: str) -> list[dict]:
@@ -499,7 +499,7 @@ def scan_file(path: Path, rel: str) -> list[dict]:
     try:
         if path.stat().st_size > 1_000_000:
             return []
-        lines = path.read_text(errors="replace").splitlines()
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
     in_block = False
@@ -628,8 +628,11 @@ def records_from_ask(tool_input: dict, tool_response, *, repo: str, session: str
 # ---------------------------------------------------------------- hooks
 
 def _hook_input() -> dict:
+    """Hook payloads are UTF-8 JSON on every platform; read bytes so Windows' console code page can't garble them."""
     try:
-        return json.loads(sys.stdin.read() or "{}")
+        buf = getattr(sys.stdin, "buffer", None)
+        raw = buf.read().decode("utf-8", errors="replace") if buf else sys.stdin.read()
+        return json.loads(raw or "{}")
     except ValueError:
         return {}
 
@@ -658,7 +661,7 @@ def hook_capture(_args) -> int:
         else:
             p = log_path(repo)
             p.parent.mkdir(parents=True, exist_ok=True)
-            with p.open("a") as f:
+            with p.open("a", encoding="utf-8", newline="\n") as f:
                 f.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in recs))
             _emit("PostToolUse", f"build-questions saved {len(recs)} question(s) for {repo} locally; this repo "
                                  f"has no central list yet (/build-questions:setup creates it).")
@@ -784,7 +787,7 @@ def hook_stop(_args) -> int:
 
 def _iter_jsonl(p: Path):
     try:
-        with p.open() as f:
+        with p.open(encoding="utf-8", errors="replace") as f:
             for line in f:
                 try:
                     yield json.loads(line)
@@ -833,7 +836,7 @@ def read_page_dir(d: Path) -> dict[str, dict]:
     qd = Path(d) / "questions" if (Path(d) / "questions").is_dir() else Path(d)
     for f in sorted(qd.glob("*.json")):
         try:
-            obj = json.loads(f.read_text())
+            obj = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         version = None
@@ -1031,8 +1034,8 @@ def cmd_enroll(args) -> int:
     d.mkdir(parents=True, exist_ok=True)
     created = not store_file(root).exists()
     if created:
-        store_file(root).write_text("")
-    (d / "README.md").write_text(STORE_README)
+        store_file(root).write_text("", encoding="utf-8", newline="\n")
+    (d / "README.md").write_text(STORE_README, encoding="utf-8", newline="\n")
     recs = read_store(root, repo)
     write_store(root, recs, repo)
     ga = ensure_gitattributes(root)
@@ -1096,7 +1099,7 @@ def cmd_record(args) -> int:
 def cmd_import(args) -> int:
     """Merge candidates (a JSON list Claude extracted from stray files or issues) into the central list."""
     root, repo = _root(args), _repo(args)
-    raw = json.loads(Path(args.file).read_text())
+    raw = json.loads(Path(args.file).read_text(encoding="utf-8"))
     raw = raw if isinstance(raw, list) else [raw]
     now = now_iso()
     recs, files = [], {}
@@ -1152,7 +1155,7 @@ def cmd_merge_local(args) -> int:
             incoming.extend(got)
     stats = add_to_store(root, repo, incoming)
     if n_local and not args.keep_local:
-        log_path(repo).rename(log_path(repo).with_suffix(".merged"))
+        log_path(repo).replace(log_path(repo).with_suffix(".merged"))
     _out({"repo": repo, "local": n_local, "transcript": n_tx, **stats})
     return 0
 
@@ -1225,7 +1228,7 @@ def cmd_digest(args) -> int:
     root, repo = _root(args), _repo(args)
     cfg = load_config()
     page = args.page or ((cfg.get("projects") or {}).get(repo) or {}).get("artifact") or ""
-    reqs = json.loads(Path(args.requests).read_text()) if args.requests else []
+    reqs = json.loads(Path(args.requests).read_text(encoding="utf-8")) if args.requests else []
     organized = json.loads(args.organized) if args.organized else None
     subject, body = compose_digest(read_store(root, repo), repo, page, args.since or "", reqs, organized)
     _out({"subject": subject, "body": body})
@@ -1250,7 +1253,7 @@ def cmd_schedule(args) -> int:
 def cmd_email(args) -> int:
     """Print the change-request email as {subject, body}; Claude sends it with the mail server's send_email tool."""
     cfg = load_config()
-    reqs = json.loads(Path(args.requests).read_text())
+    reqs = json.loads(Path(args.requests).read_text(encoding="utf-8"))
     reqs = reqs if isinstance(reqs, list) else [reqs]
     repo = args.repo or detect_repo()
     page = args.page or ((cfg.get("projects") or {}).get(repo) or {}).get("artifact") or ""
@@ -1259,7 +1262,16 @@ def cmd_email(args) -> int:
     return 0
 
 
+def _utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv=None) -> int:
+    _utf8_stdio()
     ap = argparse.ArgumentParser(prog="bq.py", description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
 

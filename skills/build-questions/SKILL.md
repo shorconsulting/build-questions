@@ -9,7 +9,8 @@ Each repo keeps ONE list of every product question asked while building it, with
 `.claude/build-questions/questions.jsonl`, readable as `QUESTIONS.md` beside it. Reviewers (often the client)
 read it on a review page and can request changes. Questions scattered across chats, plans, notes and issues get
 lost, re-asked and contradicted, so everything goes in that list and nowhere else. The commands' guide is
-`${CLAUDE_PLUGIN_ROOT}/docs/commands.md`; the script is `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bq.py`.
+`${CLAUDE_PLUGIN_ROOT}/docs/commands.md`; the script is `<python> "${CLAUDE_PLUGIN_ROOT}/scripts/bq.py"`, where
+`<python>` is the plugin's `python` option (`python3` on macOS and Linux, usually `py` on Windows).
 
 ## Start of work
 

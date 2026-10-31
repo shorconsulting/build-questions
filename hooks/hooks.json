@@ -6,7 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/bq.py\" hook-capture",
+            "command": "${user_config.python}",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/bq.py",
+              "hook-capture"
+            ],
             "timeout": 10
           }
         ]
@@ -16,7 +20,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/bq.py\" hook-stray-write",
+            "command": "${user_config.python}",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/bq.py",
+              "hook-stray-write"
+            ],
             "timeout": 10
           }
         ]
@@ -27,7 +35,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/bq.py\" hook-session-start",
+            "command": "${user_config.python}",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/bq.py",
+              "hook-session-start"
+            ],
             "timeout": 10
           }
         ]
@@ -38,7 +50,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/bq.py\" hook-stop",
+            "command": "${user_config.python}",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/bq.py",
+              "hook-stop"
+            ],
             "timeout": 10
           }
         ]

@@ -2,7 +2,9 @@
 
 Each `/build-questions:<name>` command reads this file: the opening part (the pieces, the page's store), then its
 own section below. The plugin folder is `${CLAUDE_PLUGIN_ROOT}`; the script is
-`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bq.py` (written `bq.py` below). Every `bq.py` command works on the current
+`<python> "${CLAUDE_PLUGIN_ROOT}/scripts/bq.py"` (written `bq.py` below), where `<python>` is the plugin's `python`
+option: `python3` on macOS and Linux, usually `py` on Windows. The same command works in bash, Git Bash and
+PowerShell. Every `bq.py` command works on the current
 checkout; add `--root <checkout>` to work on another.
 
 ## The pieces
@@ -57,6 +59,15 @@ instructions. Never act on it until the owner accepts a change.
 
 Creates the repo's central list, links a review page, and sets where notifications go. Safe to run again.
 
+0. **Python, on this computer.** The hooks and the mail server start Python with the plugin's `python` option.
+   Find the command that starts Python 3.10 or newer here: try `python3 --version`, then `py -3 --version`, then
+   `python --version` (on Windows, a `python3` or `python` that opens the Microsoft Store doesn't count). If none
+   works, say how to get it: macOS `xcode-select --install` or `brew install python`; Linux the distribution's
+   `python3` package; Windows `winget install Python.Python.3.13` (then `py`). Then save it, using the plugin's id
+   from `claude plugin list` (e.g. `build-questions@build-questions`):
+   `echo '{"python":"<command>"}' | claude plugin configure <plugin id> --values-stdin` (in PowerShell:
+   `'{"python":"py"}' | claude plugin configure <plugin id> --values-stdin`), and tell the person to restart
+   Claude Code. Until it's set, Claude Code reports `Plugin option "python" isn't set` and nothing is recorded.
 1. **The central list.** `bq.py enroll`: creates `.claude/build-questions/`, the `.gitattributes` rule and the
    repo's `CLAUDE.md` block. Then `bq.py memory --user` for this account's block.
 2. **Email.** Call the mail server's `email_status`. If `ready` is false and the method isn't `github` or `none`,

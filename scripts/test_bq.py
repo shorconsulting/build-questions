@@ -192,6 +192,16 @@ class TestStore(Base):
         bq.store_file(self.root).write_text(json.dumps(newer) + "\n" + json.dumps(base) + "\n")
         self.assertEqual(self.store()[0]["answer"], "Postgres")
 
+    def test_non_ascii_round_trip_and_lf_line_endings(self):
+        self.enroll()
+        run(["record", "--root", str(self.root), "--question", "Café menu: which currency (€ or ¥)?",
+             "--answer", "Euro — €", "--topic", "Préférences"])
+        r = self.store()[0]
+        self.assertEqual((r["question"], r["answer"]), ("Café menu: which currency (€ or ¥)?", "Euro — €"))
+        self.assertIn("Euro — €", (bq.store_dir(self.root) / "QUESTIONS.md").read_text(encoding="utf-8"))
+        self.assertNotIn(b"\r\n", bq.store_file(self.root).read_bytes())
+        self.assertNotIn(b"\r\n", (self.root / "CLAUDE.md").read_bytes())
+
     def test_record_and_set_answer(self):
         self.enroll()
         out = json.loads(run(["record", "--root", str(self.root), "--question", "Button colour?", "--answer", "Green",

@@ -42,7 +42,23 @@ See [CONCEPT.md](CONCEPT.md) for the design and the open questions.
 Shor Consulting accounts can also install it from the shared marketplace:
 `/plugin marketplace add shorconsulting/marketplace`, then `/plugin install build-questions@shorconsulting`.
 
-Needs `python3` and `git` (`gh` for issues). Then, inside the repo being built: `/build-questions:setup`.
+Then, inside the repo being built: `/build-questions:setup`.
+
+## Platforms
+
+Works on **macOS, Linux and Windows**. It needs Python 3.10 or newer and `git` (and `gh` for GitHub issues).
+
+| | Python command (`python` option) | Get Python |
+|---|---|---|
+| macOS | `python3` | `xcode-select --install` or `brew install python` |
+| Linux | `python3` | the distribution's `python3` package |
+| Windows | `py` (or `python`) | `winget install Python.Python.3.13` |
+
+Claude Code asks for the `python` option when you enable the plugin (`python3` is filled in; Windows users change
+it to `py`), and `/build-questions:setup` checks it and fixes it if needed. Hooks run in exec form, without a shell,
+so they behave the same under bash, zsh, Git Bash and PowerShell. Files are read and written as UTF-8 with `\n`
+line endings on every platform, so the committed list doesn't churn between Windows and macOS teammates. The test
+suite runs on all three in CI.
 
 ## Commands
 
@@ -106,7 +122,8 @@ docs/commands.md                the shared guide: the page's store and each comm
 page/build-questions.html       the review page template
 ```
 
-Tests: `python3 -m unittest discover -s scripts -p 'test_*.py'`.
+Tests: `python3 -m unittest discover -s scripts -p 'test_*.py'` (Windows: `py -m unittest ...`). CI runs them on
+Linux, macOS and Windows with Python 3.10 and 3.13.
 
 ## License
 

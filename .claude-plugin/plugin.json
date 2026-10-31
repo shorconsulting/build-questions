@@ -1,7 +1,7 @@
 {
   "name": "build-questions",
   "displayName": "Build Questions",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Keeps one central, committed list of every question asked while building an app (in each repo, merged from wherever Claude asked them), publishes it for review, and emails the owner when a reviewer requests a change.",
   "author": {
     "name": "David Shor",
@@ -18,6 +18,13 @@
   ],
   "license": "MIT",
   "userConfig": {
+    "python": {
+      "type": "string",
+      "title": "Python command",
+      "description": "How to start Python 3.10 or newer on this computer: python3 on macOS and Linux, py on Windows (or python, if that is what works in a terminal).",
+      "required": true,
+      "default": "python3"
+    },
     "notify_email": {
       "type": "string",
       "title": "Notification email",
@@ -73,7 +80,7 @@
   },
   "mcpServers": {
     "mail": {
-      "command": "python3",
+      "command": "${user_config.python}",
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/scripts/mail_server.py"
       ],

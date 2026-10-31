@@ -19,7 +19,7 @@ import urllib.request
 from email.message import EmailMessage
 import os
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 
 
 def opt(name: str) -> str:
@@ -127,7 +127,15 @@ def handle(req: dict) -> dict | None:
 
 
 def main() -> None:
-    for line in sys.stdin:
+    # MCP messages are UTF-8 JSON lines on every platform (Windows defaults to a legacy code page).
+    stdin = sys.stdin.buffer if hasattr(sys.stdin, "buffer") else sys.stdin
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    except (AttributeError, ValueError):
+        pass
+    for line in stdin:
+        if isinstance(line, bytes):
+            line = line.decode("utf-8", errors="replace")
         line = line.strip()
         if not line:
             continue
