@@ -143,5 +143,5 @@ Linux, macOS and Windows with Python 3.10 and 3.13.
 
 ## License, privacy and support
 
-MIT. See [LICENSE](LICENSE), the [privacy policy](PRIVACY.md) and the [terms of use](TERMS.md). Support:
+Changes: [CHANGELOG.md](CHANGELOG.md). MIT. See [LICENSE](LICENSE), the [privacy policy](PRIVACY.md) and the [terms of use](TERMS.md). Support:
 [GitHub issues](https://github.com/shorconsulting/build-questions/issues).
