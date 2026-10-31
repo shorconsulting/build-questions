@@ -100,6 +100,22 @@ Claude Code and talks only to the provider you chose. Nothing else in the plugin
 Emails go out on the schedule you choose (`/build-questions:schedule`) and when someone starts build work in the
 repo.
 
+## Data and the services it talks to
+
+Shor Consulting runs no server for this plugin and receives no data from it. Everything stays with you, except
+what you send through these services:
+
+| Service | When | What is sent |
+|---|---|---|
+| Resend (api.resend.com) | Only if `email_method` is `resend` | Change-request notices and digests (question text, answers, reviewers' requests) to your notification address |
+| Your SMTP server | Only if `email_method` is `smtp` | The same notices and digests |
+| GitHub | Reading issues during `organize`; posting a comment if `email_method` is `github`; your own pushes | Issue lookups with your `gh` login; the notice or digest text as an issue comment |
+| claude.ai (Anthropic) | If you publish a review page | The question list and reviewers' change requests, stored as an artifact under your account |
+
+Personal data it stores: your notification email address (Claude Code's plugin settings), reviewers' claude.ai user
+ids on the review page, and whatever names appear in your questions and answers. See the
+[privacy policy](PRIVACY.md).
+
 ## Who can do what on the page
 
 | Access on the artifact | Can |
