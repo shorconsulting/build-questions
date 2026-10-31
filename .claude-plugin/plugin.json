@@ -16,5 +16,6 @@
     "change-requests",
     "audit-trail"
   ],
-  "icon": ".claude-plugin/icon.png"
+  "icon": ".claude-plugin/icon.png",
+  "license": "MIT"
 }
