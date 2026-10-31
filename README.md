@@ -75,20 +75,14 @@ Each record: `id`, `n` (Q-number), `question`, `answer`, `topic`, `options`, `so
 ## Email
 
 Set in the plugin's options, which Claude Code asks for when you enable the plugin (change them later with
-`/plugin` → build-questions → Configure, or `claude plugin configure build-questions`):
-
-| Option | |
-|---|---|
-| `notify_email` | Where notices and digests go |
-| `email_method` | `resend` (recommended), `smtp`, `github` (an @-mention on an issue; GitHub emails you), or `none` |
-| `email_from` | Optional sender; Resend needs a verified domain for it |
-| `resend_api_key` | For `resend`. Kept in secure storage |
-| `smtp_host`, `smtp_port`, `smtp_user`, `smtp_password` | For `smtp`. The password is kept in secure storage |
+`/plugin` → build-questions → Configure, or `claude plugin configure build-questions`): where notices and digests
+go, how they are sent (`resend`, `smtp`, `github` for an @-mention on an issue, or `none`), an optional sender,
+and the details the chosen method needs. Secret values stay in Claude Code's secure storage.
 
 Mail is sent only by the bundled `mail` MCP server (`scripts/mail_server.py`), which receives these options from
-Claude Code. Nothing else in the plugin touches a credential or the network, and nothing is written to the page
-or the repo. Emails go out on the schedule you choose (`/build-questions:schedule`) and when someone starts build
-work in the repo.
+Claude Code and talks only to the provider you chose. Nothing else in the plugin sends anything off the machine.
+Emails go out on the schedule you choose (`/build-questions:schedule`) and when someone starts build work in the
+repo.
 
 ## Who can do what on the page
 

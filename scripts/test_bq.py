@@ -39,7 +39,7 @@ class Base(unittest.TestCase):
         self.root.mkdir()
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin",
-                        "https://github.com/acme/app.git"], check=True)
+                        "https://git.example.com/acme/app.git"], check=True)
         self.env = mock.patch.dict(os.environ, {"BUILD_QUESTIONS_HOME": str(self.home), "HOME": str(t / "user")})
         self.env.start()
 
@@ -70,10 +70,10 @@ class Base(unittest.TestCase):
 class TestRemote(unittest.TestCase):
     def test_remotes(self):
         cases = {
-            "https://github.com/shorconsulting/marketplace.git": "shorconsulting/marketplace",
-            "git@github.com:ShorConsultingInc/tidyhaus.git": "ShorConsultingInc/tidyhaus",
+            "https://git.example.com/shorconsulting/marketplace.git": "shorconsulting/marketplace",
+            "git@git.example.com:ShorConsultingInc/tidyhaus.git": "ShorConsultingInc/tidyhaus",
             "http://local_proxy@127.0.0.1:1234/git/owner/repo": "owner/repo",
-            "ssh://git@github.com/a/b/": "a/b",
+            "ssh://git@git.example.com/a/b/": "a/b",
         }
         for url, want in cases.items():
             self.assertEqual(bq.repo_from_remote(url), want, url)
