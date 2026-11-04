@@ -57,6 +57,7 @@ header { display: grid; gap: 8px }
 .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 16px;
   background: var(--mark); color: var(--mark-ink); border-radius: 6px }
 .banner p { margin: 0; flex: 1 1 18rem; min-width: 0 }
+[hidden] { display: none !important }
 
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); overflow-x: auto }
 .tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 12px 9px; cursor: pointer;
@@ -191,6 +192,10 @@ footer { font-size: .85rem; color: var(--muted) }
   const qnum = (q) => "Q" + String(q.n || 0).padStart(3, "0");
   const toast = (msg) => { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2600); };
   const nameOf = (id) => (id && state.names[id]) || (id === state.me ? "You" : "A reviewer");
+
+  // ---------- the questions are built into the page: bq.py writes them from the repo's list into page.html, and
+  // publishing that file is the whole sync. The page's database holds only reviewers' change requests.
+  const seed = (() => { try { return JSON.parse($("bq-seed").textContent); } catch (_) { return null; } })();
 
   // ---------- routing
   const viewFromHash = () => (location.hash === "#settled" ? "settled" : (location.hash === "#open" || location.hash === "#changes") ? "open" : null);
@@ -407,7 +412,6 @@ footer { font-size: .85rem; color: var(--muted) }
   }
 
   async function start() {
-    const timer = setTimeout(() => failLoading("The page's storage didn't answer. Reload the page, or sign in to claude.ai if you aren't."), 10000);
     const hv = viewFromHash(); if (hv) setView(hv);
     const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
     state.user = user;
@@ -415,22 +419,19 @@ footer { font-size: .85rem; color: var(--muted) }
       try { state.canEdit = await user.canEdit(); } catch (_) {}
       try { state.me = await user.id(); } catch (_) {}
     }
-    if (!db) { clearTimeout(timer); failLoading("Sign in to claude.ai with an account this page is shared with to see the questions."); return; }
+    if (!db) return; // signed out or not shared: the questions still show, change requests don't
     state.db = db;
-    db.doc("meta/project").onSnapshot((s) => { state.meta = (s.exists && s.data()) || {}; renderSummary(); }, () => {});
-    db.collection("questions").onSnapshot((snap) => {
-      clearTimeout(timer);
-      state.questions = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (a.n || 0) - (b.n || 0) || String(a.asked_at).localeCompare(String(b.asked_at)));
-      state.loaded.q = true; render();
-    }, (e) => { clearTimeout(timer); failLoading(e && e.code === "not_granted" ? "This page hasn't been shared with you." : "Reload the page to try again."); });
+    db.doc("meta/project").onSnapshot((s) => { state.meta = { ...((s.exists && s.data()) || {}), ...((seed && seed.meta) || {}) }; renderSummary(); }, () => {});
     db.collection("requests").onSnapshot((snap) => {
       state.requests = snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
       state.loaded.r = true; render(); resolveNames();
     }, () => {});
   }
 
+  if (!seed) { failLoading("This copy of the page has no questions built in. Publish the repo's .claude/build-questions/page.html instead."); return; }
+  state.questions = (seed.questions || []).slice().sort((a, b) => (a.n || 0) - (b.n || 0) || String(a.asked_at).localeCompare(String(b.asked_at)));
+  state.meta = seed.meta || {};
+  state.loaded.q = true; render();
   if (window.claude && claude.use) start();
-  else failLoading("Open this page on claude.ai to see the questions.");
 })();
 </script>

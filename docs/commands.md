@@ -23,21 +23,41 @@ checkout; add `--root <checkout>` to work on another.
   and decisions made without asking, are recorded with `bq.py record` (see the skill).
 - **Guardrails.** A hook on Write/Edit flags any edit that starts a list of questions or decisions somewhere else.
   At session start a hook reports questions waiting to be merged: files outside the list, and questions captured
-  before the list existed. The Stop hook reminds once to sync the page and commit the list.
-- **The page.** Each repo can have a review page: a claude.ai artifact with a database. Its link is
-  `projects.<owner/repo>.artifact` in `~/.build-questions/config.json` (`bq.py status` shows it). Reviewers read
-  every question and press **Request a change**. The owner sees requests at once (a banner, and the question moves
-  from **Settled questions** to **Open questions**). You email the owner at the next `check`.
+  before the list existed. The Stop hook reminds once to republish the page and commit the list.
+- **The page.** Each repo can have a review page: a claude.ai artifact. The page is
+  `.claude/build-questions/page.html`, which `bq.py` regenerates from the central list on every write, with every
+  question built in. The repo is the only store of questions: the page shows what is in that file, and publishing
+  the file is the whole of `sync`. The page's own database holds only what reviewers send back (change requests).
+  Links live in `.claude/build-questions/page.json`, committed: `artifact` is the main page (the one shared with
+  reviewers), `accounts` maps each Claude account's email to its own copy. `bq.py status --account <email>` gives
+  `page` (yours), `main_page`, `page_html`, `page_title` and `capabilities`. Reviewers read every question and
+  press **Request a change**. The owner sees requests at once (a banner, and the question moves from **Settled
+  questions** to **Open questions**). You email the owner at the next `check`.
+
+**One page, every account.** An artifact belongs to the claude.ai account that published it, but `page.html` is
+in the repo, so any account can put the latest page up in one call, with no rebuilding:
+
+1. `bq.py status --account <your claude.ai email>` (the email from your context; ask once if you don't know it).
+2. If `page` is set, `read` it with the Artifact tool. If you are a writer, publish `page_html` to it (`url` =
+   `page`, no `capabilities`, so it keeps its own).
+3. Otherwise (no page, it doesn't open, or you aren't a writer) publish `page_html` as it is, with `icon: "list"`,
+   `title` = `page_title`, `description: "Every question asked while building <project>, the answers, and
+   reviewers' change requests."` and `capabilities` exactly as `status` prints them. Don't copy or edit the file
+   first. Then `bq.py link <url> --account <your email>`, and commit `page.json`. The first page linked becomes the
+   main one.
+
+Reviewers use the main page. A copy only shows its own change requests, so `check` from each account covers the
+requests on that account's page; reviewers' requests reach every account through the main page's owner.
 
 ## The page's store
 
 Read and write it with the `ArtifactData` tool (load it with ToolSearch if it is deferred), `url` = the page link.
+It holds no questions: those are built into `page.html` from the repo.
 
 | Path | Holds | Written by |
 |---|---|---|
-| `questions/<id>` | A copy of one central-list record: `n`, `asked_at`, `updated_at`, `source`, `topic`, `question`, `options`, `multi`, `answer`, `notes`, `status` (`answered`, `unanswered`, `changed`), `history`, `aliases` | You, on `sync` (from `bq.py diff`) |
 | `requests/<id>` | One change request: `question_id`, `question`, `current_answer`, `proposed`, `reason`, `by` (user id), `created_at`, `status` (`open`, `accepted`, `declined`, `applied`), `decided_by`, `decided_at`, `decision_note`, `notified_at`, `resolution`, `resolved_at`, `link` | Reviewers create; the owner accepts or declines (page or chat); you set `notified_at` and resolve |
-| `meta/project` | `repo`, `title`, `updated_at`, `count`, `schedule_label` (shown on the page), `last_digest_at`, `last_run_at` | You, on `setup`, `sync`, `schedule` and `run` |
+| `meta/project` | `schedule_label` (shown on the page), `last_digest_at`, `last_run_at` | You, on `setup`, `schedule` and `run` |
 | `settings/notify` | `method` (`resend`, `smtp`, `github`, `none`) and `github_login`. Editors only; reviewers cannot read it | You, on `setup` |
 
 ## Email
@@ -82,25 +102,13 @@ Creates the repo's central list, links a review page, and sets where notificatio
    For scheduled runs in a cloud environment, the plugin's options must be set in that environment too. Once ready,
    offer one test email: `send_email` with subject "build-questions test" and a one-line body; say whether it went.
 3. (Nothing to do here: the address and method are plugin options, not files.)
-4. **The page.** If the repo already has one (`bq.py status`), read it with the Artifact tool to confirm it still
-   opens and skip to step 5. Otherwise ask once: "Is there already a Build Questions page for this project (a
-   teammate's, shared with you as an Editor)? Paste its link, or say no." With a link, read it, check it is a Build
-   Questions page, and link it. With no link, publish a new one: copy `${CLAUDE_PLUGIN_ROOT}/page/build-questions.html`
-   to your scratchpad, change its `<title>` to `<Project name> Build Questions`, and publish it with `icon: "list"`,
-   `description: "Every question asked while building <project>, the answers, and reviewers' change requests."`
-   and exactly these `capabilities`:
-
-   ```json
-   {"db": {"rules": [{"path": "", "read": "view", "write": "admin"},
-                     {"path": "requests", "read": "view", "write": "interact"},
-                     {"path": "settings", "read": "admin", "write": "admin"}]},
-    "user": {"scopes": ["profile"]}}
-   ```
-
-   Link it: `bq.py link <url> --title "<Project name>"`, then `bq.py memory` again so the repo's block names the page.
-5. Write `meta/project` and `settings/notify` (one `batch`).
+4. **The page.** `bq.py enroll --title "<Project name>"` (sets the page's title), then follow **One page, every
+   account** above. Before publishing a brand-new main page, ask once: "Is there already a Build Questions page for
+   this project (a teammate's, shared with you as an Editor)? Paste its link, or say no." With a link, read it,
+   check it is a Build Questions page, publish `page_html` to it, and `bq.py link <url>`.
+5. Write `settings/notify` (and `meta/project` if there is a schedule label) with one `batch`.
 6. Run `organize` for this repo (it gathers what's already scattered around), then `sync`.
-7. Commit `.claude/build-questions/`, `.gitattributes` and `CLAUDE.md` together ("Add central build-questions
+7. Commit `.claude/build-questions/` (with `page.json` and `page.html`), `.gitattributes` and `CLAUDE.md` together ("Add central build-questions
    list"), following the repo's usual way of landing changes (its CLAUDE.md, its autopilot policy).
 8. **The schedule.** Run `schedule` (below): the person chooses when questions are organized and presented to them.
    Without a schedule, merging and email happen only when someone next works in the repo.
@@ -221,25 +229,18 @@ failed and why. A failed step never stops the other steps or repos.
 
 ## sync
 
-Makes the page match the central list, in both directions.
+Puts the latest central list on the page. There is nothing to compare: `page.html` already holds every question.
 
-1. Read the page's questions to a folder: `ArtifactData` `list` on `questions` with `out_dir` set to a new folder in
-   your scratchpad (page with `query.cursor` if there are more than 1000).
-2. `bq.py pull --page-dir <folder>` brings back any answer that is newer on the page (a change applied from another
-   account's session).
-3. `bq.py diff --page-dir <folder>` prints the writes the page needs (new questions, changed answers, and deletes for
-   ids merged into another question). Apply them with `ArtifactData` `batch`, 50 at a time. If an entry has no
-   `if_version` but the document exists, read that document and retry with its `version`.
-4. `bq.py synced`, and `update` `meta/project` with `updated_at` and `count` (the highest `n`).
-5. If `pull` changed the central list, it needs committing like any other change.
-6. One line in your reply: how many were added or changed, and the page link. Say nothing when there were none.
+1. Follow **One page, every account**: publish `page_html` to your page (or put up your copy if you have none).
+2. `bq.py synced`.
+3. One line in your reply with the page link. Say nothing when the page was already current.
 
 ## check
 
 Finds new change requests, notifies the owner, and reports. Unattended-safe: it never changes code or answers.
 
-1. `ArtifactData` `query` `requests` for `status == "open"`. If the local config is missing (a fresh cloud
-   session), take the repo's page link from the argument.
+1. `ArtifactData` `query` `requests` for `status == "open"`, on the page `bq.py status` names (or the argument).
+   If this account can't open it, see **One page, every account**.
 2. **Email** the ones with no `notified_at`, all in one message:
    Write them (with `question_id`, `question`, `current_answer`, `proposed`, `reason`, and `by_name` from the
    person's name if you can see it) to a JSON file in your scratchpad and run

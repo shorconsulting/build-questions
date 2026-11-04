@@ -18,8 +18,9 @@ lost, re-asked and contradicted, so everything goes in that list and nowhere els
    contradicts the code or a newer instruction, ask (citing the Q-number) rather than guessing.
 2. If the session-start note says there are questions waiting to be merged (stray files, questions captured before
    the list existed), run **organize** for this repo first.
-3. If the repo has a page: **sync**, then **check**. If there are open or accepted change requests, tell the person
-   in one line before starting ("2 change requests on Tidyhaus: Q014 database, Q022 colours. Go through them
+3. If the repo has a page (`.claude/build-questions/page.json`): **sync**, then **check**. The page is
+   `page.html` beside the list, published as-is; any account puts it up without rebuilding (docs/commands.md, "One
+   page, every account"). If there are open or accepted change requests, tell the person in one line before starting ("2 change requests on Tidyhaus: Q014 database, Q022 colours. Go through them
    now?"). Don't start work an accepted request would change without saying so.
 
 No `.claude/build-questions/` folder? Questions are still captured on this computer; mention once that

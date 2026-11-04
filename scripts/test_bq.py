@@ -285,25 +285,40 @@ class TestHooks(Base):
 
 
 class TestPage(Base):
-    def test_diff_and_pull(self):
+    def test_link_is_committed_so_other_accounts_find_the_page(self):
         self.enroll()
-        run(["record", "--root", str(self.root), "--question", "Button colour?", "--answer", "Green"])
-        rec = self.store()[0]
-        writes = json.loads(run(["diff", "--root", str(self.root)]))
-        self.assertEqual([(w["op"], w["doc_id"]) for w in writes], [("set", rec["id"])])
-        pd = Path(self.tmp.name) / "page" / "questions"
-        pd.mkdir(parents=True)
-        (pd / f"{rec['id']}.json").write_text(json.dumps({"id": rec["id"], "version": 4, "data": bq.page_doc(rec)}))
-        self.assertEqual(json.loads(run(["diff", "--root", str(self.root), "--page-dir", str(pd.parent)])), [])
-        changed = dict(bq.page_doc(rec), answer="Orange", status="changed", updated_at="2099-01-01T00:00:00Z",
-                       history=[{"answer": "Green", "at": "2099-01-01T00:00:00Z"}])
-        (pd / f"{rec['id']}.json").write_text(json.dumps({"id": rec["id"], "version": 5, "data": changed}))
-        res = json.loads(run(["pull", "--root", str(self.root), "--page-dir", str(pd.parent)]))
-        self.assertEqual(res["updated"], 1)
-        self.assertEqual(self.store()[0]["answer"], "Orange")
+        run(["link", "https://claude.ai/artifact/abc", "--title", "App", "--root", str(self.root)])
+        self.assertIn("claude.ai/artifact/abc", (self.root / ".claude" / "build-questions" / "page.json").read_text())
+        self.assertIn("claude.ai/artifact/abc", (self.root / "CLAUDE.md").read_text())
+        (self.home / "config.json").unlink()  # another account or computer: no local config
+        self.assertEqual(json.loads(run(["status", "--root", str(self.root)]))["page"], "https://claude.ai/artifact/abc")
+        ctx = json.loads(self.hook(bq.hook_session_start, {"cwd": str(self.root)}))["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("claude.ai/artifact/abc", ctx)
+        run(["link", "https://claude.ai/artifact/copy", "--account", "b@x.com", "--root", str(self.root)])
+        st = json.loads(run(["status", "--root", str(self.root), "--account", "b@x.com"]))
+        self.assertEqual((st["page"], st["main_page"]), ("https://claude.ai/artifact/copy", "https://claude.ai/artifact/abc"))
+        (self.root / ".claude" / "build-questions" / "page.json").unlink()  # linked before page.json existed
+        run(["link", "https://claude.ai/artifact/abc", "--repo", "acme/app", "--root", "/nonexistent"])  # config only
+        self.hook(bq.hook_session_start, {"cwd": str(self.root)})
+        self.assertTrue((self.root / ".claude" / "build-questions" / "page.json").exists())
+        run(["unlink", "--root", str(self.root)])
+        self.assertIsNone(json.loads(run(["status", "--root", str(self.root)]))["page"])
 
+    def test_page_html_has_the_whole_list_built_in(self):
+        self.enroll()
+        run(["enroll", "--root", str(self.root), "--title", "Tidy <Haus>"])
+        run(["record", "--root", str(self.root), "--question", "Closes </script><b>?", "--answer", "Green"])
+        html = (self.root / ".claude" / "build-questions" / "page.html").read_text()
+        self.assertIn("<title>Tidy &lt;Haus&gt; Build Questions</title>", html)
+        seed = html.split('id="bq-seed">\n', 1)[1].split("\n</script>", 1)[0]
+        self.assertNotIn("<", seed)  # nothing in a question can close the script tag
+        data = json.loads(seed)
+        self.assertEqual([q["answer"] for q in data["questions"]], ["Green"])
+        self.assertEqual(data["meta"]["count"], 1)
+        st = json.loads(run(["status", "--root", str(self.root)]))
+        self.assertTrue(st["page_html"].endswith("page.html"))
+        self.assertIn("db", st["capabilities"])
 
-class TestBackfill(Base):
     def test_transcript(self):
         t = Path(self.tmp.name) / "s.jsonl"
         lines = [

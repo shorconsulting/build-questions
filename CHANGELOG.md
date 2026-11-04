@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 (2026-11-04)
+
+- The repo is the only store of questions. `.claude/build-questions/page.html` is the review page with every
+  question built in, regenerated on every write; publishing it is the whole of `sync`. The page's database now
+  holds only reviewers' change requests (`bq.py pull` and `diff` are gone).
+- Any Claude account puts the latest page up in one call: links live in the committed `page.json` (the main page,
+  plus each account's own copy), so no account rebuilds the page or publishes a stray one.
+
 ## 0.4.0 (2026-10-31)
 
 - Runs on macOS, Linux and Windows: hooks use exec form (no shell), the Python command is a plugin option

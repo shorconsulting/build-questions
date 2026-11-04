@@ -1,5 +1,5 @@
 ---
-description: Copy recorded questions and answers that are not on the review page yet
+description: Republish the review page from the repo's page.html, which has every question built in
 ---
 
 # /build-questions:sync

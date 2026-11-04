@@ -33,7 +33,7 @@ flowchart LR
 2. **The repo is the source of truth.** Every question lives in one committed file per repo,
    `.claude/build-questions/questions.jsonl`, so every account and every branch sees the same list, and it survives
    cloud containers. Lines are self-contained JSON, branches merge with git's union driver, and duplicate ids
-   resolve to the newest copy. The page is a synced copy for reviewers. Repos without a list yet buffer captures on
+   resolve to the newest copy. The page is `page.html` beside it, regenerated with every question built in, so publishing that file is the whole sync. Repos without a list yet buffer captures on
    the computer until `setup` or `organize` merges them.
 3. **Instructions live in memory.** A managed block in each repo's `CLAUDE.md` (and a short one in each account's
    `~/.claude/CLAUDE.md`) tells every session, with or without the plugin, to read the list before asking, record
@@ -44,8 +44,8 @@ flowchart LR
    Hooks then keep it from drifting: a Write/Edit hook flags new question lists anywhere else, and session start
    reports strays.
 5. **One page per project.** Reviewers are usually per project (the client for that app), so each repo gets its own
-   page with its own sharing. It's a claude.ai artifact with a database: live updates, per-person identity, access
-   rules, no server to run.
+   page with its own sharing. It's a claude.ai artifact whose questions are built into its HTML from the repo; its
+   small database is only the inbox for reviewers' change requests (per-person identity, access rules, no server).
 6. **The owner decides; reviewers request.** A request never changes code by itself. The owner accepts or keeps it
    on the page or in chat; only then does Claude act. Reviewer text is treated as data. The owner's decision in chat
    is itself an `AskUserQuestion`, so it is recorded too.

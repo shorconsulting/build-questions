@@ -8,6 +8,9 @@ THE CENTRAL LIST (source of truth, committed in each repo)
   <repo>/.claude/build-questions/QUESTIONS.md      readable copy, regenerated on every write (don't edit)
   <repo>/.claude/build-questions/README.md         the line format, for sessions without the plugin
   <repo>/.claude/build-questions/sources.json      files already merged in, with their content hash
+  <repo>/.claude/build-questions/page.json         review page links: the main one, each account's copy, capabilities
+  <repo>/.claude/build-questions/page.html         the page itself with every question built in, regenerated on every
+                                                   write: any account publishes it as-is and it shows the latest list
   <repo>/.gitattributes                             "questions.jsonl merge=union" so branches merge cleanly
   <repo>/CLAUDE.md                                  managed block telling every session where questions go
 
@@ -15,11 +18,12 @@ THE CENTRAL LIST (source of truth, committed in each repo)
   `updated_at` wins. Lines without an id get one from their question text.
 
 LOCAL (per computer, under $BUILD_QUESTIONS_HOME, default ~/.build-questions)
-  config.json                 linked projects {owner/repo: {artifact, title}}, schedule
+  config.json                 linked projects {owner/repo: {artifact, title}} (fallback for page.json), schedule
   log/<owner__repo>.jsonl     questions captured in repos not enrolled yet (merged in by `organize`)
   state/<owner__repo>.json    hook bookkeeping
 
-THE PAGE (claude.ai artifact) is the review surface. `diff` and `pull` reconcile it with the central list.
+THE PAGE (claude.ai artifact) is the review surface: page.html published as-is. Its database holds only reviewers'
+change requests; the questions are built into the HTML, so the repo stays the only store of questions.
 
 EMAIL is not sent from here: `email` and `digest` print {subject, body}, and Claude sends it with the bundled mail
 server (scripts/mail_server.py), which gets its settings from the plugin's options. This script reads no
@@ -33,6 +37,7 @@ import argparse
 import datetime as _dt
 import difflib
 import hashlib
+import html
 import json
 import os
 import re
@@ -127,6 +132,67 @@ def store_file(root: Path) -> Path:
 
 def enrolled(root: Path | None) -> bool:
     return bool(root) and store_file(root).exists()
+
+
+def page_file(root: Path) -> Path:
+    return store_dir(root) / "page.json"
+
+
+def page_html_file(root: Path) -> Path:
+    return store_dir(root) / "page.html"
+
+
+PAGE_TEMPLATE = Path(__file__).resolve().parent.parent / "page" / "build-questions.html"
+PAGE_CAPABILITIES = {"db": {"rules": [{"path": "", "read": "view", "write": "admin"},
+                                      {"path": "requests", "read": "view", "write": "interact"},
+                                      {"path": "settings", "read": "admin", "write": "admin"}]},
+                     "user": {"scopes": ["profile"]}}
+
+
+def load_page_meta(root: Path | None) -> dict:
+    """page.json: {artifact (main page, shared with reviewers), accounts {email: url}, title, capabilities}."""
+    try:
+        d = json.loads(page_file(root).read_text(encoding="utf-8")) if root else {}
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_page_meta(root: Path, **fields) -> dict:
+    d = load_page_meta(root)
+    d.update({k: v for k, v in fields.items() if v is not None})
+    d["capabilities"] = PAGE_CAPABILITIES
+    page_file(root).write_text(json.dumps(d, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    return d
+
+
+def page_link(repo: str, root: Path | None = None, account: str | None = None) -> str | None:
+    """This account's copy, else the main page (committed in the repo, so every account sees it), else local config."""
+    meta = load_page_meta(root)
+    url = ((meta.get("accounts") or {}).get(account) if account else None) or meta.get("artifact")
+    return url or ((load_config().get("projects") or {}).get(repo) or {}).get("artifact")
+
+
+def page_title(repo: str, root: Path | None) -> str:
+    return (load_page_meta(root).get("title") or ((load_config().get("projects") or {}).get(repo) or {}).get("title")
+            or repo.split("/")[-1])
+
+
+def _seed_json(recs: list[dict], repo: str, title: str) -> str:
+    # One question per line keeps diffs readable; "<" escaped so no text can close the <script> tag.
+    meta = {"repo": repo, "title": title, "count": max((r.get("n") or 0 for r in recs), default=0),
+            "updated_at": max((stamp(r) for r in recs), default="")}
+    qs = ",\n".join(json.dumps(page_doc(r), sort_keys=True, ensure_ascii=False) for r in recs)
+    return ('{"meta": ' + json.dumps(meta, sort_keys=True, ensure_ascii=False) + ',\n"questions": [\n' + qs
+            + "\n]}").replace("<", "\\u003c")
+
+
+def render_page(recs: list[dict], repo: str, title: str) -> str:
+    tpl = PAGE_TEMPLATE.read_text(encoding="utf-8")
+    tpl = tpl.replace("<title>Build Questions</title>", f"<title>{html.escape(title)} Build Questions</title>", 1)
+    seed = f'<script type="application/json" id="bq-seed">\n{_seed_json(recs, repo, title)}\n</script>\n'
+    i = tpl.index("<script>")
+    return tpl[:i] + seed + tpl[i:]
 
 
 def load_state(repo: str) -> dict:
@@ -322,7 +388,9 @@ def write_store(root: Path, recs: list[dict], repo: str) -> None:
     tmp = store_file(root).with_suffix(".tmp")
     tmp.write_text("".join(json.dumps(r, sort_keys=True, ensure_ascii=False) + "\n" for r in recs), encoding="utf-8", newline="\n")
     tmp.replace(store_file(root))
-    (d / "QUESTIONS.md").write_text(render_md(recs, repo), encoding="utf-8", newline="\n")
+    (d / "QUESTIONS.md").write_text(render_md(recs, repo, root), encoding="utf-8", newline="\n")
+    if PAGE_TEMPLATE.exists():
+        page_html_file(root).write_text(render_page(recs, repo, page_title(repo, root)), encoding="utf-8", newline="\n")
 
 
 def add_to_store(root: Path, repo: str, incoming: list[dict]) -> dict:
@@ -331,9 +399,8 @@ def add_to_store(root: Path, repo: str, incoming: list[dict]) -> dict:
     return stats
 
 
-def render_md(recs: list[dict], repo: str) -> str:
-    cfg = load_config()
-    page = ((cfg.get("projects") or {}).get(repo) or {}).get("artifact")
+def render_md(recs: list[dict], repo: str, root: Path | None = None) -> str:
+    page = page_link(repo, root)
     out = [f"# Build questions: {repo}", "",
            "Generated from `questions.jsonl` by the build-questions plugin. Don't edit this file: record questions as",
            "described in `README.md` next to it." + (f" Review page: {page}" if page else ""), ""]
@@ -378,6 +445,13 @@ Append one line (keep it on one line):
 
 To change an answer, append the same question again with the new answer and a later `updated_at`: the plugin
 keeps the old answer in `history`. The plugin fills in `id`, `n` and the rest the next time it runs.
+
+## The review page
+
+`page.html` is the review page (a claude.ai artifact) with every question in this list built in, regenerated by
+the plugin. To put the latest page up from any Claude account, publish `page.html` as it is, with the
+`capabilities` in `page.json`; then add the link to `page.json` under `accounts` (your email). `artifact` there is
+the main page, the one shared with reviewers. The page's own database holds only reviewers' change requests.
 
 ## Don't keep questions anywhere else
 
@@ -710,18 +784,20 @@ def hook_session_start(_args) -> int:
         cwd = data.get("cwd")
         repo = detect_repo(cwd)
         root = repo_root(cwd)
-        cfg = load_config()
-        proj = (cfg.get("projects") or {}).get(repo)
+        page = page_link(repo, root)
         local = read_jsonl(log_path(repo), repo)
         if enrolled(root):
+            if page and not load_page_meta(root).get("artifact"):
+                # Linked before page.json existed: commit the link so other accounts stop publishing their own page.
+                save_page_meta(root, artifact=page, title=page_title(repo, root))
             recs = read_store(root, repo)
             n_open = sum(1 for r in recs if not r.get("answer"))
             strays = scan_repo(root, limit_files=1500)
             msg = (f"build-questions: this repo's central list of product questions is "
                    f"{STORE_REL.as_posix()}/questions.jsonl ({len(recs)} questions, {n_open} unanswered; read "
                    f"QUESTIONS.md beside it before asking anything).")
-            if proj:
-                msg += f" Review page: {proj.get('artifact')}."
+            if page:
+                msg += f" Review page: {page}."
             todo = []
             if local:
                 todo.append(f"{len(local)} question(s) captured before the list existed")
@@ -731,10 +807,10 @@ def hook_session_start(_args) -> int:
             if todo:
                 msg += " To merge: " + "; ".join(todo) + ". Run the build-questions 'organize' steps before " \
                        "other work, and include the result in your next commit."
-            if proj:
+            if page:
                 msg += " Then follow the skill's 'Start of work' step (sync, check for change requests)."
             _emit("SessionStart", msg)
-        elif local or proj:
+        elif local or page:
             _emit("SessionStart",
                   f"build-questions has {len(local)} question(s) for {repo} saved on this computer but the repo has "
                   f"no central list. Mention once, at a natural point, that /build-questions:setup creates it.")
@@ -758,11 +834,11 @@ def hook_stop(_args) -> int:
         if not enrolled(root):
             return 0
         repo = detect_repo(cwd)
-        proj = (load_config().get("projects") or {}).get(repo)
+        page = page_link(repo, root)
         st = load_state(repo)
         sig = _store_sig(root)
         dirty = bool(_git(root, "status", "--porcelain", "--", STORE_REL.as_posix()))
-        need_sync = bool(proj) and st.get("synced_sig") != sig
+        need_sync = bool(page) and st.get("synced_sig") != sig
         if not (need_sync or dirty):
             return 0
         remind = f"{sig}:{int(need_sync)}:{int(dirty)}"
@@ -772,7 +848,7 @@ def hook_stop(_args) -> int:
         save_state(repo, st)
         steps = []
         if need_sync:
-            steps.append("copy it to the review page (docs/commands.md 'sync')")
+            steps.append("republish .claude/build-questions/page.html to the review page (docs/commands.md 'sync')")
         if dirty:
             steps.append(f"commit {STORE_REL.as_posix()}/ with this work (or say why not)")
         print(json.dumps({"decision": "block", "reason":
@@ -830,29 +906,6 @@ def default_transcript_dir(cwd: str) -> Path:
 
 # ---------------------------------------------------------------- the page
 
-def read_page_dir(d: Path) -> dict[str, dict]:
-    """questions/<id>.json files from `ArtifactData list ... out_dir`. Accepts bare docs or {id, data, version}."""
-    out = {}
-    qd = Path(d) / "questions" if (Path(d) / "questions").is_dir() else Path(d)
-    for f in sorted(qd.glob("*.json")):
-        try:
-            obj = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        version = None
-        if isinstance(obj, dict) and isinstance(obj.get("data"), dict):
-            version = obj.get("version")
-            doc_id = obj.get("id") or f.stem
-            obj = obj["data"]
-        else:
-            doc_id = obj.get("id") or f.stem
-            version = obj.pop("_version", None) if isinstance(obj, dict) else None
-        if isinstance(obj, dict):
-            obj["_doc_id"], obj["_version"] = doc_id, version
-            out[doc_id] = obj
-    return out
-
-
 PAGE_FIELDS = ("id", "n", "repo", "asked_at", "updated_at", "source", "topic", "question", "options", "multi",
                "answer", "custom_answer", "notes", "status", "history", "aliases")
 
@@ -861,34 +914,6 @@ def page_doc(r: dict) -> dict:
     d = {k: r.get(k) for k in PAGE_FIELDS if r.get(k) is not None}
     d["recorded_by"] = "build-questions"
     return d
-
-
-def _same(a: dict, b: dict) -> bool:
-    return all((a.get(k) or None) == (b.get(k) or None) for k in PAGE_FIELDS)
-
-
-def page_diff(recs: list[dict], page: dict[str, dict]) -> list[dict]:
-    writes = []
-    ids = {r["id"] for r in recs}
-    for r in recs:
-        cur = page.get(r["id"])
-        doc = page_doc(r)
-        if cur is None:
-            writes.append({"op": "set", "collection": "questions", "doc_id": r["id"], "data": doc})
-        elif not _same(doc, cur) and stamp(r) >= stamp(cur):
-            w = {"op": "set", "collection": "questions", "doc_id": r["id"], "data": doc}
-            if cur.get("_version"):
-                w["if_version"] = cur["_version"]
-            writes.append(w)
-    # questions merged into another one: remove their old page copy
-    aliased = {a for r in recs for a in (r.get("aliases") or [])}
-    for doc_id, cur in page.items():
-        if doc_id not in ids and doc_id in aliased:
-            w = {"op": "delete", "collection": "questions", "doc_id": doc_id}
-            if cur.get("_version"):
-                w["if_version"] = cur["_version"]
-            writes.append(w)
-    return writes
 
 
 # ---------------------------------------------------------------- email
@@ -1009,11 +1034,22 @@ def cmd_config(args) -> int:
 def cmd_link(args) -> int:
     cfg = load_config()
     repo = _repo(args)
+    root = repo_root(getattr(args, "root", None))
+    main = not args.account or not page_link(repo, root)  # the first page linked becomes the main one
     proj = cfg.setdefault("projects", {}).setdefault(repo, {})
-    proj["artifact"] = args.artifact
+    if main:
+        proj["artifact"] = args.artifact
     if args.title:
         proj["title"] = args.title
     save_config(cfg)
+    if enrolled(root):
+        # Committed with the list, so another account finds this page instead of publishing its own.
+        accounts = dict(load_page_meta(root).get("accounts") or {})
+        if args.account:
+            accounts[args.account] = args.artifact
+        save_page_meta(root, artifact=args.artifact if main else None, title=args.title, accounts=accounts or None)
+        upsert_block(root / "CLAUDE.md", repo_memory_block(repo, page_link(repo, root)))
+        write_store(root, read_store(root, repo), repo)
     print(f"{repo} -> {args.artifact}")
     return 0
 
@@ -1023,6 +1059,12 @@ def cmd_unlink(args) -> int:
     repo = _repo(args)
     (cfg.get("projects") or {}).pop(repo, None)
     save_config(cfg)
+    root = repo_root(getattr(args, "root", None))
+    meta = load_page_meta(root)
+    if meta:
+        meta.pop("artifact", None)
+        meta.pop("accounts", None)
+        page_file(root).write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     print(f"{repo} unlinked")
     return 0
 
@@ -1032,6 +1074,8 @@ def cmd_enroll(args) -> int:
     root, repo = _root(args), _repo(args)
     d = store_dir(root)
     d.mkdir(parents=True, exist_ok=True)
+    if args.title:
+        save_page_meta(root, title=args.title)
     created = not store_file(root).exists()
     if created:
         store_file(root).write_text("", encoding="utf-8", newline="\n")
@@ -1039,10 +1083,10 @@ def cmd_enroll(args) -> int:
     recs = read_store(root, repo)
     write_store(root, recs, repo)
     ga = ensure_gitattributes(root)
-    page = ((load_config().get("projects") or {}).get(repo) or {}).get("artifact")
+    page = page_link(repo, root)
     mem = upsert_block(root / "CLAUDE.md", repo_memory_block(repo, page))
     _out({"repo": repo, "store": str(store_file(root)), "created": created, "gitattributes_changed": ga,
-          "claude_md": mem})
+          "claude_md": mem, "page_html": str(page_html_file(root))})
     return 0
 
 
@@ -1052,7 +1096,7 @@ def cmd_memory(args) -> int:
         res["user"] = upsert_block(Path.home() / ".claude" / "CLAUDE.md", USER_MEMORY_BLOCK)
     if args.repo_memory or not args.user:
         root, repo = _root(args), _repo(args)
-        page = ((load_config().get("projects") or {}).get(repo) or {}).get("artifact")
+        page = page_link(repo, root)
         res["repo"] = upsert_block(root / "CLAUDE.md", repo_memory_block(repo, page))
     _out(res)
     return 0
@@ -1061,11 +1105,14 @@ def cmd_memory(args) -> int:
 def cmd_status(args) -> int:
     repo = _repo(args)
     root = repo_root(getattr(args, "root", None))
-    cfg = load_config()
     recs = read_store(root, repo) if enrolled(root) else []
     _out({
         "repo": repo, "root": str(root) if root else None, "enrolled": enrolled(root),
-        "page": ((cfg.get("projects") or {}).get(repo) or {}).get("artifact"),
+        "page": page_link(repo, root, args.account),
+        "main_page": page_link(repo, root),
+        "page_html": str(page_html_file(root)) if enrolled(root) else None,
+        "page_title": f"{page_title(repo, root)} Build Questions",
+        "capabilities": PAGE_CAPABILITIES,
         "questions": len(recs), "unanswered": sum(1 for r in recs if not r.get("answer")),
         "captured_locally_not_merged": len(read_jsonl(log_path(repo), repo)),
         "store": str(store_file(root)) if root else None,
@@ -1170,32 +1217,6 @@ def cmd_list(args) -> int:
     return 0
 
 
-def cmd_diff(args) -> int:
-    """ArtifactData batch writes that bring the page up to date with the central list."""
-    root, repo = _root(args), _repo(args)
-    page = read_page_dir(Path(args.page_dir)) if args.page_dir else {}
-    _out(page_diff(read_store(root, repo), page))
-    return 0
-
-
-def cmd_pull(args) -> int:
-    """Bring answers changed on the page (newer than the list's copy) back into the central list."""
-    root, repo = _root(args), _repo(args)
-    page = read_page_dir(Path(args.page_dir))
-    have = {r["id"]: r for r in read_store(root, repo)}
-    incoming = []
-    for doc_id, d in page.items():
-        cur = have.get(doc_id)
-        if cur is None or stamp(d) > stamp(cur):
-            d = {k: v for k, v in d.items() if not k.startswith("_")}
-            d.setdefault("id", doc_id)
-            d.setdefault("sources", [{"type": "page"}])
-            incoming.append(d)
-    stats = add_to_store(root, repo, incoming) if incoming else {"added": 0, "merged": 0, "updated": 0}
-    _out({"repo": repo, "from_page": len(incoming), **stats})
-    return 0
-
-
 def cmd_synced(args) -> int:
     root, repo = _root(args), _repo(args)
     st = load_state(repo)
@@ -1226,8 +1247,7 @@ def cmd_set_answer(args) -> int:
 def cmd_digest(args) -> int:
     """Print the digest as {subject, body}; Claude sends it with the mail server's send_email tool."""
     root, repo = _root(args), _repo(args)
-    cfg = load_config()
-    page = args.page or ((cfg.get("projects") or {}).get(repo) or {}).get("artifact") or ""
+    page = args.page or page_link(repo, root) or ""
     reqs = json.loads(Path(args.requests).read_text(encoding="utf-8")) if args.requests else []
     organized = json.loads(args.organized) if args.organized else None
     subject, body = compose_digest(read_store(root, repo), repo, page, args.since or "", reqs, organized)
@@ -1252,11 +1272,10 @@ def cmd_schedule(args) -> int:
 
 def cmd_email(args) -> int:
     """Print the change-request email as {subject, body}; Claude sends it with the mail server's send_email tool."""
-    cfg = load_config()
     reqs = json.loads(Path(args.requests).read_text(encoding="utf-8"))
     reqs = reqs if isinstance(reqs, list) else [reqs]
     repo = args.repo or detect_repo()
-    page = args.page or ((cfg.get("projects") or {}).get(repo) or {}).get("artifact") or ""
+    page = args.page or page_link(repo, repo_root()) or ""
     subject, body = compose_email(reqs, repo, page)
     _out({"subject": subject, "body": body})
     return 0
@@ -1293,15 +1312,18 @@ def main(argv=None) -> int:
     p.add_argument("key", nargs="?")
     p.add_argument("value", nargs="?")
     p.set_defaults(fn=cmd_config)
-    p = p_("link", cmd_link, "link this repo to its review page", root=False)
+    p = p_("link", cmd_link, "link this repo to its review page (committed in page.json)")
     p.add_argument("artifact")
     p.add_argument("--title")
-    p_("unlink", cmd_unlink, root=False)
-    p_("enroll", cmd_enroll, "create the central list, merge rule and CLAUDE.md block in this repo")
+    p.add_argument("--account", help="your claude.ai email: links this account's own copy of the page")
+    p_("unlink", cmd_unlink)
+    p = p_("enroll", cmd_enroll, "create the central list, merge rule and CLAUDE.md block in this repo")
+    p.add_argument("--title", help="project name, for the page's title")
     p = p_("memory", cmd_memory, "write the managed CLAUDE.md block (repo by default; --user for this account)")
     p.add_argument("--user", action="store_true", help="also/only ~/.claude/CLAUDE.md")
     p.add_argument("--repo-memory", action="store_true", help="with --user, also the repo's CLAUDE.md")
-    p_("status", cmd_status)
+    p = p_("status", cmd_status)
+    p.add_argument("--account", help="your claude.ai email: `page` is then this account's copy, if it has one")
 
     p = p_("record", cmd_record, "record a question asked in plain text, or a decision made without asking")
     p.add_argument("--question", required=True)
@@ -1324,11 +1346,7 @@ def main(argv=None) -> int:
 
     p = p_("list", cmd_list)
     p.add_argument("--format", choices=["md", "json"], default="md")
-    p = p_("diff", cmd_diff, "page writes needed (ArtifactData batch entries)")
-    p.add_argument("--page-dir", help="folder from `ArtifactData list questions out_dir=...`")
-    p = p_("pull", cmd_pull, "bring newer answers from the page into the central list")
-    p.add_argument("--page-dir", required=True)
-    p_("synced", cmd_synced, "remember that the page now matches the central list")
+    p_("synced", cmd_synced, "remember that page.html is now published to the page")
     p = p_("set-answer", cmd_set_answer, "change an answer after an accepted change request")
     p.add_argument("question", help="id or Q-number (Q014)")
     p.add_argument("answer")

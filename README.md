@@ -68,7 +68,7 @@ suite runs on all three in CI.
 | `/build-questions:organize [owner/repo ...] [--all-linked]` | Merges questions from stray files, issues, past sessions and this computer into each repo's list, cleans up the strays, refreshes memory, commits |
 | `/build-questions:schedule [when \| show \| stop]` | Choose when questions are organized and presented to you (e.g. weekday mornings, Mondays 8am); creates the scheduled task |
 | `/build-questions:run` | One scheduled run: organize, sync, check, and email the digest (what the schedule fires; also works by hand) |
-| `/build-questions:sync` | Makes the review page match the central list, both ways |
+| `/build-questions:sync` | Republishes the review page from the repo's `page.html` (every question built in) |
 | `/build-questions:check` | Finds new change requests, emails the owner, reports. Safe unattended: use it as the scheduled task |
 | `/build-questions:changes [--all] [--page]` | Lists requested changes in chat, or opens the page on its Open questions tab |
 | `/build-questions:resolve [Q014]` | Asks the owner to accept or keep each request, then applies the accepted ones |
@@ -129,7 +129,7 @@ ids on the review page, and whatever names appear in your questions and answers.
 ```
 .claude-plugin/plugin.json      manifest (marketplace.json beside it: this repo is its own marketplace)
 hooks/hooks.json                capture (AskUserQuestion), stray check (Write/Edit), SessionStart note, Stop reminder
-scripts/bq.py                   central list, merge, scan, memory, hooks, page diff, email text (stdlib, no network)
+scripts/bq.py                   central list, merge, scan, memory, hooks, page.html, email text (stdlib, no network)
 scripts/mail_server.py          the only part that sends mail: a small MCP server fed by the plugin's options
 scripts/test_bq.py              unit tests
 skills/build-questions/SKILL.md how Claude asks, records and handles change requests
