@@ -185,6 +185,14 @@ class TestStore(Base):
         self.assertTrue(recs[0]["id"].startswith("q-"))
         self.assertEqual(recs[0]["n"], 1)
 
+    def test_history_entry_without_answer_renders(self):
+        self.enroll()
+        p = self.root / ".claude" / "build-questions" / "questions.jsonl"
+        p.write_text(json.dumps({"question": "Which DB?", "answer": "Postgres", "history": [
+            {"at": "2026-10-01T00:00:00Z", "question": "DB?"}, {"at": "2026-10-02T00:00:00Z", "answer": "MySQL"}]}) + "\n")
+        self.enroll()
+        self.assertIn("(was: ~~MySQL~~)", (p.parent / "QUESTIONS.md").read_text())
+
     def test_union_merge_duplicates_latest_wins(self):
         self.enroll()
         base = {"id": "q-1", "question": "Which database?", "answer": "SQLite", "asked_at": "2026-10-01T00:00:00Z", "n": 1}

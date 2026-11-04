@@ -417,7 +417,9 @@ def render_md(recs: list[dict], repo: str, root: Path | None = None) -> str:
         out += [f"## {t}", ""]
         for r in topics[t]:
             tag = " _(decided by Claude)_" if r.get("source") == "decided" else ""
-            was = f" (was: ~~{r['history'][-1]['answer']}~~)" if r.get("history") else ""
+            # history can also hold reworded questions ({at, question}); show the last earlier answer
+            prev = [h["answer"] for h in r.get("history") or [] if isinstance(h, dict) and h.get("answer")]
+            was = f" (was: ~~{prev[-1]}~~)" if prev else ""
             out.append(f"- **Q{r['n']:03d}** {r['question']}  \n  → **{r['answer']}**{was}{tag}"
                        + (f"  \n  _{r['notes']}_" if r.get("notes") else ""))
         out.append("")

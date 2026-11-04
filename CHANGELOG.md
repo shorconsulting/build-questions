@@ -7,6 +7,9 @@
   holds only reviewers' change requests (`bq.py pull` and `diff` are gone).
 - Any Claude account puts the latest page up in one call: links live in the committed `page.json` (the main page,
   plus each account's own copy), so no account rebuilds the page or publishes a stray one.
+- "Show me the questions" from any account syncs, then opens, that account's page.
+- Fixes: `QUESTIONS.md` and the page no longer break on a history entry that records a reworded question (no
+  `answer`); the change-request banner no longer shows when hidden.
 
 ## 0.4.0 (2026-10-31)
 

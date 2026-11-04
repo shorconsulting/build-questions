@@ -272,7 +272,8 @@ page on its Open questions tab instead.
    Why: "We expect 40 concurrent staff users"
    ```
 
-3. With `--page`, `open` the page with the Artifact tool and give the link with `#open` appended.
+3. With `--page`, run `sync` first (so the page shows the repo's latest list), then `open` the page with the
+   Artifact tool and give the link with `#open` appended.
 4. If any are `open` and the person is here, offer to go through them now (see `resolve`).
 
 ## resolve

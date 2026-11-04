@@ -291,7 +291,7 @@ footer { font-size: .85rem; color: var(--muted) }
   function questionHtml(q) {
     const reqs = reqsFor(q.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     const marked = reqs.some(isActive);
-    const prev = (q.history || []).slice(-1)[0];
+    const prev = (q.history || []).filter((x) => x && x.answer).slice(-1)[0];
     const labelText = q.source === "decided" ? "Claude decided" : q.status === "changed" ? "Answer, changed" : "Answer";
     const chosen = new Set(String(q.answer || "").split(",").map((s) => s.trim()));
     return `<article class="q" id="${esc(q.id)}">
@@ -311,7 +311,7 @@ footer { font-size: .85rem; color: var(--muted) }
 
   function rowHtml(q) {
     const changed = q.status === "changed";
-    const prev = (q.history || []).slice(-1)[0];
+    const prev = (q.history || []).filter((x) => x && x.answer).slice(-1)[0];
     return `<div class="row" id="${esc(q.id)}">
       <span class="q-num mono">${qnum(q)}</span>
       <p class="rq">${esc(q.question)}</p>

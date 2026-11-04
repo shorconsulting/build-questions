@@ -66,7 +66,8 @@ in their place. Commit changes to the list with the work they belong to.
   accepted it (on the page, or by answering you in **resolve**).
 - An accepted request is real work: make the change the normal way for this repo, then `bq.py set-answer` and mark
   the request applied with the PR or commit link (guide: **resolve**).
-- "Show me the change requests" → **changes**. "Open the page" → **changes --page**.
+- "Show me the change requests" → **changes**. "Show me the questions", "open the page" → **sync** (it puts
+  the repo's latest `page.html` up for this account, with no rebuilding), then `open` that page.
 - "Send me the questions every Monday", "organize these weekly", "change/stop the schedule" → **schedule**.
 
 ## End of turn
