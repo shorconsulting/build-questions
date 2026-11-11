@@ -36,6 +36,20 @@ No `.claude/build-questions/` folder? Questions are still captured on this compu
   (Database, Auth, Pricing, Design, Scope...). Give each option a description of what it means for the product.
 - One decision per question.
 
+## One place, from the first day
+
+The list is the only place questions and answers are kept, from the start of the work. Never put them anywhere
+else: no question pages or artifacts of your own, no answers files (`Answers_*.md`, `answers.json`), no question
+lists in plans, reports, handoff notes or PR bodies (those cite Q-numbers). A batch of questions for the owner is
+the list's review page or AskUserQuestion, never a new page or document. When the owner answers anywhere (a call,
+a chat), write the answer onto that question's own line at once.
+
+The repo carries this itself: `enroll` commits a copy of the tool (`.claude/build-questions/tool/bq.py`) and hooks in
+`.claude/settings.json` that run it for every account and container, with or without the plugin. They report the
+list at session start, refuse a write that stores questions or answers outside the list (allow a real FAQ in
+`.claude/build-questions/allow.json`), record AskUserQuestion answers, and before you finish ask for anything stored
+elsewhere to be merged. Where the plugin is installed too, its own hooks stand aside so nothing runs twice.
+
 ## Every question, in the right format
 
 Every question raised while building goes into the list as it comes up, whatever its source: asked in chat, decided

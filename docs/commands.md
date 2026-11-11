@@ -21,6 +21,11 @@ checkout; add `--root <checkout>` to work on another.
 - **Capture.** A hook on `AskUserQuestion` writes each question, its options and the answer straight into the
   central list (or into `~/.build-questions/log/` on a repo that has no list yet). Questions asked in plain text,
   and decisions made without asking, are recorded with `bq.py record` (see the skill).
+- **Committed hooks (0.7.0).** `enroll` (or `bq.py hooks`) copies the tool and the page template into
+  `.claude/build-questions/tool/` and writes hooks into the repo's `.claude/settings.json` (keeping everything else
+  there): session start reports the list; a guard before Write/Edit refuses to store questions or answers outside
+  the list; AskUserQuestion is recorded; Stop asks for strays to be merged. Every account and cloud container runs
+  them, with or without the plugin; where the plugin is installed too, its hooks stand aside. Commit both.
 - **Formats.** An open question has no answer, 2 to 4 options with the recommended one first (`Recommended: `) and
   notes starting `Recommendation: ... Why: ...`; an answered one has the answer and who gave it (or how to undo a
   decision Claude made). `bq.py record` refuses an open question not in that format, `bq.py lint` lists any in the
@@ -133,9 +138,11 @@ For each repo:
 2. **This computer and past sessions.** `bq.py merge-local --transcripts --root <checkout>` merges questions captured
    before the list existed and every `AskUserQuestion` in this project's transcripts on this computer. Ids match
    the live hook's, so nothing is added twice.
-3. **Stray files.** `bq.py scan --root <checkout>` lists files with question or decision lists outside the central
-   list (plans, specs, notes, ADRs, QUESTIONS.md or DECISIONS.md, "Open questions" sections, `Q:` lines, unchecked
-   `- [ ] ...?` items), skipping files already merged and unchanged. Read each listed file around its hits and
+3. **Stray files.** `bq.py scan --root <checkout>` lists files with question, decision or answer lists outside the central
+   list (plans, specs, notes, ADRs, QUESTIONS.md or DECISIONS.md, answers files such as `Answers_*.md`, question
+   or answer stores and pages kept as JSON or HTML, "Open questions" sections, `Q:`/`A:` lines, unchecked
+   `- [ ] ...?` items), skipping files already merged and unchanged, and files allowed in `allow.json`. Write each
+   answer found onto its question (the newer answer wins; the older goes to history). Read each listed file around its hits and
    extract every real product question into a candidates file in your scratchpad:
 
    ```json
@@ -152,9 +159,12 @@ For each repo:
    Then `bq.py import --file <candidates> --root <checkout>`; it merges near-identical questions into one (the
    newer answer wins, the older goes to history) and marks the files as merged. For a listed file with nothing to
    import, `bq.py scan --mark <path>`.
-4. **Point the strays at the list.** In each file you imported from, replace the question list (only the list) with
-   one line: `Questions and decisions live in [.claude/build-questions/QUESTIONS.md](...)` with the right relative
-   link. Delete a file that held nothing else (QUESTIONS.md, DECISIONS.md, open-questions.md). Never touch the
+4. **Point the strays at the list.** `import` reports `by_file` (each file's questions, as Q-numbers, open ones
+   marked) and `answered` (the questions that got an answer from the files). In each file you imported from,
+   replace the question or answer list (only the list) with one line naming where they now are:
+   `Moved to the central list: Q012 (answered), Q015 (open). See [.claude/build-questions/QUESTIONS.md](...)` with the
+   right relative link. A page or document that put a batch of questions to the owner gets the same line, so whoever
+   asked there finds the answers in the list. Delete a file that held nothing else (QUESTIONS.md, DECISIONS.md, open-questions.md). Never touch the
    central folder's own files, and leave ADRs in place (add the link line under their heading instead).
 5. **GitHub issues** (unless `--no-issues`). `gh issue list --repo <owner/repo> --state all --label question` and
    the same for `decision` and `needs-decision`, plus open issues whose title ends in `?`. Import each as

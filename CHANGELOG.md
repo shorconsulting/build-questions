@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0 (2026-11-11)
+
+- The list travels with the repo. `enroll` (or `bq.py hooks`) commits a copy of the tool and page template in
+  `.claude/build-questions/tool/` and hooks in `.claude/settings.json`, so every account and cloud container runs them
+  from the first session, with or without the plugin. Where the plugin is installed too, its hooks stand aside.
+- Questions and answers are stored nowhere else. A guard before Write/Edit refuses to put a question or answer list
+  outside the list (answers files, question pages kept as JSON or HTML, "Open questions" sections, `Q:`/`A:` lines),
+  naming where they go instead; a real FAQ is allowed in `allow.json` or with the `build-questions:allow` marker,
+  and ADR folders are left alone. The memory blocks and README say a batch for the owner is the list's review page
+  or AskUserQuestion, never a new page or document.
+- `scan` also finds answers files and question or answer stores kept as JSON, HTML, CSV or YAML. `import` reports
+  which questions got answers (`answered`) and each file's questions as Q-numbers (`by_file`), so organize leaves a
+  line where they were saying where the answers now are. The Stop hook asks for strays to be merged.
+- Fix: the README's answered example is valid JSON.
+
 ## 0.6.0 (2026-11-11)
 
 - Every question goes in the list as it comes up, from any source, and an answer given anywhere else is written
