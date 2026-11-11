@@ -221,6 +221,57 @@ class TestStore(Base):
         self.assertIn("Orange", (bq.store_dir(self.root) / "QUESTIONS.md").read_text())
 
 
+class TestFormats(Base):
+    """Open and answered questions have different formats (David S, 11 Nov 2026)."""
+
+    def test_open_format_problems(self):
+        good = {"answer": "", "options": [{"label": "Recommended: Stripe", "description": ""}, {"label": "Square", "description": ""}],
+                "notes": bq.open_notes("Stripe", "Least setup", "built today: none")}
+        self.assertEqual(bq.open_format_problems(good), [])
+        self.assertEqual(bq.open_format_problems({"answer": "Stripe"}), [])
+        bare = {"answer": "", "options": [], "notes": "Open for the owner"}
+        self.assertEqual(len(bq.open_format_problems(bare)), 3)
+        self.assertTrue(bq.open_format_problems(dict(good, options=list(reversed(good["options"])))))
+
+    def test_record_refuses_an_open_question_not_in_format(self):
+        self.enroll()
+        with self.assertRaises(SystemExit):
+            run(["record", "--root", str(self.root), "--question", "Which provider takes card payments?"])
+        self.assertEqual(self.store(), [])
+
+    def test_record_builds_the_open_format(self):
+        self.enroll()
+        run(["record", "--root", str(self.root), "--question", "Which provider takes card payments?",
+             "--options", "Square|Stripe|Braintree", "--recommendation", "Stripe", "--why", "Least setup.",
+             "--notes", "Nothing is built yet"])
+        r = self.store()[0]
+        self.assertEqual([o["label"] for o in r["options"]], ["Recommended: Stripe", "Square", "Braintree"])
+        self.assertTrue(r["notes"].startswith("Recommendation: Stripe. Why: Least setup. To answer, press Request a change"))
+        self.assertTrue(r["notes"].endswith("| Nothing is built yet"))
+        self.assertEqual((r["answer"], r["status"]), ("", "unanswered"))
+        self.assertEqual(bq.open_format_problems(r), [])
+
+    def test_lint_and_status_count_open_questions_not_in_format(self):
+        self.enroll()
+        with bq.store_file(self.root).open("a") as f:
+            f.write(json.dumps({"question": "Dark mode?", "answer": ""}) + "\n")
+            f.write(json.dumps({"question": "Which DB?", "answer": "Postgres"}) + "\n")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = bq.main(["lint", "--root", str(self.root)])
+        res = json.loads(out.getvalue())
+        self.assertEqual((code, res["open"], res["not_in_format"]), (1, 1, 1))
+        self.assertEqual(json.loads(run(["status", "--root", str(self.root)]))["open_not_in_format"], 1)
+
+    def test_memory_and_readme_carry_both_formats(self):
+        self.enroll()
+        for txt in ((self.root / "CLAUDE.md").read_text(), (bq.store_dir(self.root) / "README.md").read_text(),
+                    bq.USER_MEMORY_BLOCK):
+            self.assertIn("Recommended: ", txt)
+            self.assertIn("Recommendation: ", txt)
+            self.assertIn("written back", txt)
+
+
 class TestScanImport(Base):
     def test_scan_finds_strays_and_import_marks_them(self):
         self.enroll()

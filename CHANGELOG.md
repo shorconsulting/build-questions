@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 (2026-11-11)
+
+- Every question goes in the list as it comes up, from any source, and an answer given anywhere else is written
+  back onto its own line, so an answered question never shows as waiting. The repo's and the account's `CLAUDE.md`
+  blocks, the list's `README.md` and the skill now say so.
+- Open and answered questions have their own formats, spelled out with examples: an open one has 2 to 4 options with
+  the recommended one first (`Recommended: `) and notes starting `Recommendation: ... Why: ...`; an answered one
+  names who answered, or how to undo a decision Claude made.
+- `bq.py record` refuses an open question not in the open format, and builds it from `--recommendation` and
+  `--why`. New `bq.py lint` lists open questions not in the format; `bq.py status` counts them.
+
 ## 0.5.0 (2026-11-04)
 
 - The repo is the only store of questions. `.claude/build-questions/page.html` is the review page with every

@@ -12,7 +12,7 @@
       "name": "build-questions",
       "source": "./",
       "description": "Keeps one central, committed list of every question asked while building an app (in each repo, merged from wherever Claude asked them), publishes it for review, and emails the owner when a reviewer requests a change.",
-      "version": "0.5.0"
+      "version": "0.6.0"
     }
   ]
 }

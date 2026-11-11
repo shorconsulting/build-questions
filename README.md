@@ -86,7 +86,9 @@ CLAUDE.md           managed block between <!-- build-questions:start --> and <!-
 
 Each record: `id`, `n` (Q-number), `question`, `answer`, `topic`, `options`, `source` (`ask`, `prose`,
 `decided`), `asked_at`, `updated_at`, `status`, `history` (earlier answers), `sources` (where it was found),
-`aliases` (ids of duplicates merged into it).
+`aliases` (ids of duplicates merged into it). An open question also has 2 to 4 `options` with the recommended one first (label starting
+`Recommended: `) and `notes` starting `Recommendation: ... Why: ...`; an answered one names who answered, or for a
+decision Claude made, how to undo it. `bq.py lint` lists open questions not in that format.
 
 ## Email
 
