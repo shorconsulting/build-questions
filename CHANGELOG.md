@@ -13,6 +13,13 @@
 - `scan` also finds answers files and question or answer stores kept as JSON, HTML, CSV or YAML. `import` reports
   which questions got answers (`answered`) and each file's questions as Q-numbers (`by_file`), so organize leaves a
   line where they were saying where the answers now are. The Stop hook asks for strays to be merged.
+- The guard refuses only unmistakable question or answer lists that a write adds (open-questions headings,
+  `Q:` lines, unchecked `- [ ] ...?` items, `Answer:` lines) and new files named like a question or answer store.
+  It never refuses `Decision:` lines, lettered options, ADR or decision-log folders, any `CLAUDE.md`, `.github/` or
+  `.claude/`, lines a file already had, or a pointer line in an old store. Refusals and the Stop check apply only
+  to a repo set up with `enroll` (committed hooks or the CLAUDE.md block).
+- `scan` lists files the way git does (`.gitignore` respected; nested repos, worktrees and their lists skipped).
+- The plugin says at session start when a repo's committed copy is older than the plugin.
 - The first question captured in a git repo starts that repo's `.claude/build-questions/` list and goes straight
   in; questions wait on this computer (`~/.build-questions/log/`) only when the folder is not a git repo.
 - Fix: the README's answered example is valid JSON.

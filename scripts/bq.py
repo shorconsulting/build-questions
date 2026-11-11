@@ -131,6 +131,19 @@ def store_file(root: Path) -> Path:
     return store_dir(root) / "questions.jsonl"
 
 
+def fully_enrolled(root: Path | None) -> bool:
+    """Set up on purpose (enroll ran): the repo has the committed hooks or the CLAUDE.md block. Refusals and the
+    Stop check apply only then; a list started by a captured question does not switch them on by itself."""
+    if not enrolled(root):
+        return False
+    if repo_hooks_installed(root):
+        return True
+    try:
+        return MEM_START in (Path(root) / "CLAUDE.md").read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
 def enrolled(root: Path | None) -> bool:
     return bool(root) and store_file(root).exists()
 
@@ -564,8 +577,9 @@ def tool_dir(root: Path) -> Path:
 
 def repo_hook_command(sub: str) -> str:
     """Runs the repo's own copy, so every session on every account runs it, with or without the plugin."""
-    path = f'"$CLAUDE_PROJECT_DIR/{TOOL_REL.as_posix()}/bq.py"'
-    return f"python3 {path} {sub} || py -3 {path} {sub} || true"
+    path = f'"${{CLAUDE_PROJECT_DIR:-.}}/{TOOL_REL.as_posix()}/bq.py"'
+    # Each hook catches its own errors and exits 0, so the next interpreter runs only when the previous one is missing.
+    return f"python3 {path} {sub} || py -3 {path} {sub} || python {path} {sub} || true"
 
 
 def repo_hooks_installed(root: Path | None) -> bool:
@@ -584,6 +598,18 @@ def plugin_defers(root: Path | None) -> bool:
         return False  # this IS the repo's copy
     except ValueError:
         return True
+
+
+def _ver(v: str) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
+
+
+def _vendored_version(root: Path) -> str | None:
+    try:
+        m = re.search(r'^VERSION = "([^"]+)"', (tool_dir(root) / "bq.py").read_text(encoding="utf-8"), re.M)
+        return m.group(1) if m else "0"
+    except OSError:
+        return None
 
 
 def vendor_tool(root: Path) -> bool:
@@ -615,10 +641,21 @@ def ensure_repo_hooks(root: Path) -> str:
     except (OSError, ValueError):
         cur, existed = {}, False
     before = json.dumps(cur, sort_keys=True)
-    hooks = cur.setdefault("hooks", {})
+    if not isinstance(cur.get("hooks"), dict):
+        cur["hooks"] = {}
+    hooks = cur["hooks"]
     for event, (matcher, sub) in REPO_HOOKS.items():
-        entries = [e for e in hooks.get(event) or []
-                   if not any(HOOK_MARK in str(h.get("command", "")) for h in (e.get("hooks") or []))]
+        entries = []
+        for e in hooks.get(event) if isinstance(hooks.get(event), list) else []:
+            if not isinstance(e, dict):
+                entries.append(e)
+                continue
+            hs = e.get("hooks") if isinstance(e.get("hooks"), list) else []
+            mine = [h for h in hs if isinstance(h, dict) and HOOK_MARK in str(h.get("command", ""))]
+            if not mine:
+                entries.append(e)
+            elif len(mine) < len(hs):  # keep the user's own hooks that shared the entry
+                entries.append({**e, "hooks": [h for h in hs if h not in mine]})
         entry = {"hooks": [{"type": "command", "command": repo_hook_command(sub), "timeout": 15}]}
         if matcher:
             entry = {"matcher": matcher, **entry}
@@ -719,8 +756,12 @@ SKIP_DIRS = {".git", "node_modules", "vendor", "dist", "build", ".next", ".venv"
 TEXT_EXT = {".md", ".mdx", ".markdown", ".txt", ".rst"}
 # Question or answer stores kept as data or pages: flagged by name only (their content is not line-scanned).
 NAMED_EXT = {".json", ".jsonl", ".html", ".htm", ".csv", ".yaml", ".yml"}
-NAME_RE = re.compile(r"(question|decision|answer|clarification|open[-_ ]?items|unknowns|faq|adr)", re.I)
+NAME_RE = re.compile(r"(question|decision|answer|clarification|open[-_ ]?items|unknowns"
+                     r"|(^|[-_. ])faqs?([-_. ]|$)|(^|[-_. ])adrs?([-_. ]|$))", re.I)
 DIR_RE = re.compile(r"(^|/)(adr|adrs|decisions|decision-log|questions)(/|$)", re.I)
+# Places that hold decisions or questions on purpose, which the guard never refuses: ADR and decision-log folders,
+# any CLAUDE.md (memory), GitHub's own templates, and Claude's own folder (settings, worktrees, the list itself).
+ALLOWED_RE = re.compile(r"(^|/)(adrs?|decisions|decision-log)/|(^|/)CLAUDE\.md$|^\.github/|^\.claude/", re.I)
 HEAD_RE = re.compile(r"^\s{0,3}#{1,6}\s*(open\s+|outstanding\s+|unresolved\s+|pending\s+)?"
                      r"(questions?|decisions?|clarifications?|unknowns|assumptions|to\s+confirm|tbd)\b", re.I)
 LINE_RES = [
@@ -729,11 +770,17 @@ LINE_RES = [
     re.compile(r"^\s*(\*\*)?(decision|decided|answer)\s*[:：]", re.I),
     re.compile(r"^\s*(\*\*)?A\d*\s*[:.)]\s*\S"),
 ]
+# The guard refuses only unmistakable question or answer lists (scan, which only reports, also uses the wider set):
+# an open-questions heading, Q:/Q1. lines, unchecked "- [ ] ...?" items and Answer: lines. Decision: lines,
+# lettered options and "Assumptions" headings are ordinary in notes and handoffs and are not refused.
+GUARD_HEAD_RE = re.compile(r"^\s{0,3}#{1,6}\s*(open\s+|outstanding\s+|unresolved\s+|pending\s+)?"
+                           r"(questions?|clarifications?|unknowns)\b", re.I)
+GUARD_LINE_RES = [LINE_RES[0], LINE_RES[1], re.compile(r"^\s*(\*\*)?answers?\s*[:：]", re.I)]
 
 
 def _allowed(root: Path, rel: str, text: str = "") -> bool:
-    """A file the owner allowed to hold questions (ADR folders, an allow list, or the allow marker in the file)."""
-    if DIR_RE.search(rel) and re.search(r"(^|/)adrs?(/|$)", rel, re.I):
+    """A file allowed to hold questions or decisions (ALLOWED_RE places, the allow list, or the allow marker)."""
+    if ALLOWED_RE.search(rel):
         return True
     if ALLOW_MARK in text:
         return True
@@ -744,17 +791,23 @@ def _allowed(root: Path, rel: str, text: str = "") -> bool:
     return any(rel == a or rel.startswith(a.rstrip("/") + "/") for a in allow)
 
 
-def _holds_questions(rel: str, text: str, exists: bool = False) -> bool:
-    """Would this write store questions or answers? Question or answer lines always count; a file named like a
-    question or answer list counts when it is being created (an edit that only points at the list is fine)."""
+def _guard_hits(text: str, before: str = "") -> list[str]:
+    """Question or answer lines this write ADDS (lines the file already had are not held against it)."""
+    had = set(l.strip() for l in before.splitlines())
+    return [l for l in text.splitlines() if l.strip() and l.strip() not in had
+            and (GUARD_HEAD_RE.match(l) or any(r.match(l) for r in GUARD_LINE_RES))]
+
+
+def _holds_questions(rel: str, text: str, exists: bool = False, before: str = "") -> bool:
+    """Would this write store questions or answers? New question or answer lines count; a file named like a question
+    or answer list counts only when it is being created (an edit that points at the list is fine)."""
     ext = Path(rel).suffix.lower()
     by_name = bool(NAME_RE.search(Path(rel).name) or DIR_RE.search(rel))
     if ext in NAMED_EXT:
-        return by_name
+        return by_name and not exists
     if ext not in TEXT_EXT:
         return False
-    lines_hit = any(HEAD_RE.match(l) or any(r.match(l) for r in LINE_RES) for l in text.splitlines())
-    return lines_hit or (by_name and not exists)
+    return bool(_guard_hits(text, before)) or (by_name and not exists)
 
 
 def _sha(path: Path) -> str:
@@ -803,16 +856,32 @@ def scan_file(path: Path, rel: str) -> list[dict]:
     return hits[:15]
 
 
+def _candidate_files(root: Path):
+    """Files to scan: git's view (tracked and untracked, .gitignore respected, nested repos and worktrees skipped),
+    else a walk of the folder."""
+    out = _git(root, "ls-files", "-co", "--exclude-standard", "-z", timeout=20)
+    if out is not None:
+        for rel in out.split("\0"):
+            if rel:
+                yield Path(root) / rel
+        return
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not (Path(dirpath) / d / ".git").exists()]
+        for fn in filenames:
+            yield Path(dirpath) / fn
+
+
 def scan_repo(root: Path, include_known: bool = False, limit_files: int = 4000) -> list[dict]:
     root = Path(root)
     known = read_sources(root)
     out, seen = [], 0
-    for dirpath, dirnames, filenames in os.walk(root):
-        rel_dir = os.path.relpath(dirpath, root)
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS
-                       and Path(os.path.normpath(os.path.join(rel_dir, d))).as_posix() != STORE_REL.as_posix()]
-        for fn in filenames:
-            p = Path(dirpath) / fn
+    for p in _candidate_files(root):
+        if True:
+            fn = p.name
+            if any(part in SKIP_DIRS for part in p.relative_to(root).parts[:-1]):
+                continue
+            if f"/{STORE_REL.as_posix()}/" in "/" + p.relative_to(root).as_posix():
+                continue
             ext = p.suffix.lower()
             if ext not in TEXT_EXT and not (ext in NAMED_EXT and NAME_RE.search(fn)):
                 continue
@@ -943,16 +1012,25 @@ def hook_capture(_args) -> int:
         root = repo_root(cwd)
         if plugin_defers(root):
             return 0
-        if root and not enrolled(root):
+        started = False
+        project = os.environ.get("CLAUDE_PROJECT_DIR")
+        same_project = not project or (repo_root(project) or Path(project)).resolve() == Path(root).resolve() if root else False
+        if root and not enrolled(root) and same_project:
             # The list lives in the repo from the first question: start it here rather than outside the repo.
-            store_dir(root).mkdir(parents=True, exist_ok=True)
-            store_file(root).touch()
-            (store_dir(root) / "README.md").write_text(STORE_README, encoding="utf-8", newline="\n")
-            started = True
-        else:
-            started = False
+            # It only records; refusals and the Stop check wait until the repo is set up (enroll).
+            try:
+                store_dir(root).mkdir(parents=True, exist_ok=True)
+                store_file(root).touch()
+                (store_dir(root) / "README.md").write_text(STORE_README, encoding="utf-8", newline="\n")
+                started = True
+            except OSError:
+                started = False
         if enrolled(root):
-            add_to_store(root, repo, recs)
+            try:
+                add_to_store(root, repo, recs)
+            except OSError:
+                root = None
+        if enrolled(root):
             _emit("PostToolUse", f"build-questions recorded {len(recs)} question(s) in "
                                  f"{STORE_REL.as_posix()}/questions.jsonl. Commit it with this work."
                                  + (" This repo's list was just started there; run /build-questions:setup (or "
@@ -962,8 +1040,9 @@ def hook_capture(_args) -> int:
             p.parent.mkdir(parents=True, exist_ok=True)
             with p.open("a", encoding="utf-8", newline="\n") as f:
                 f.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in recs))
-            _emit("PostToolUse", f"build-questions saved {len(recs)} question(s) for {repo} on this computer: "
-                                 f"this folder is not a git repo, so there is no repo to keep them in yet.")
+            _emit("PostToolUse", f"build-questions saved {len(recs)} question(s) for {repo} on this computer, "
+                                 f"because there is no repo list to keep them in here (not a git repo, another "
+                                 f"project's repo, or a folder that cannot be written); setup merges them in.")
     except Exception:  # never break the session
         pass
     return 0
@@ -977,14 +1056,15 @@ def hook_guard_write(_args) -> int:
         fp = inp.get("file_path") or inp.get("notebook_path") or ""
         if not fp:
             return 0
-        root = repo_root(data.get("cwd") or os.path.dirname(fp))
-        if not enrolled(root) or plugin_defers(root):
+        here = Path(fp).parent
+        while not here.exists() and here != here.parent:
+            here = here.parent
+        root = repo_root(str(here))
+        if not fully_enrolled(root) or plugin_defers(root):
             return 0
         try:
             rel = Path(fp).resolve().relative_to(Path(root).resolve()).as_posix()
         except ValueError:
-            return 0
-        if rel.startswith(STORE_REL.as_posix() + "/") or rel == "CLAUDE.md":
             return 0
         text = "\n".join(str(inp.get(k) or "") for k in ("content", "new_string", "new_source"))
         for e in inp.get("edits") or []:
@@ -994,7 +1074,8 @@ def hook_guard_write(_args) -> int:
             whole = (Path(root) / rel).read_text(encoding="utf-8", errors="replace")
         except OSError:
             whole = ""
-        if _allowed(root, rel, text + "\n" + whole) or not _holds_questions(rel, text, exists=bool(whole)):
+        exists = (Path(root) / rel).exists()
+        if _allowed(root, rel, text + "\n" + whole) or not _holds_questions(rel, text, exists=exists, before=whole):
             return 0
         reason = (f"build-questions: questions and answers are kept only in {STORE_REL.as_posix()}/questions.jsonl, "
                   f"so that every question is already in the list when build-questions runs. Record each one there "
@@ -1051,6 +1132,11 @@ def hook_session_start(_args) -> int:
         repo = detect_repo(cwd)
         root = repo_root(cwd)
         if plugin_defers(root):
+            theirs = _vendored_version(root)
+            if theirs and _ver(theirs) < _ver(VERSION):
+                _emit("SessionStart", f"build-questions: this repo's committed copy of the tool is {theirs}; the "
+                                      f"plugin is {VERSION}. Run `bq.py hooks` from the plugin (or "
+                                      f"/build-questions:setup) to update it, and commit {TOOL_REL.as_posix()}/.")
             return 0
         page = page_link(repo, root)
         local = read_jsonl(log_path(repo), repo)
@@ -1106,7 +1192,7 @@ def hook_stop(_args) -> int:
             return 0
         cwd = data.get("cwd")
         root = repo_root(cwd)
-        if not enrolled(root) or plugin_defers(root):
+        if not fully_enrolled(root) or plugin_defers(root):
             return 0
         repo = detect_repo(cwd)
         page = page_link(repo, root)
@@ -1117,7 +1203,7 @@ def hook_stop(_args) -> int:
         strays = scan_repo(root, limit_files=1500)
         if not (need_sync or dirty or strays):
             return 0
-        remind = f"{sig}:{int(need_sync)}:{int(dirty)}:{','.join(sorted(s['path'] + s['sha'] for s in strays))}"
+        remind = f"{sig}:{int(need_sync)}:{int(dirty)}:{','.join(sorted(s['path'] for s in strays))}"
         if st.get("last_stop_reminder") == remind:
             return 0
         st["last_stop_reminder"] = remind
@@ -1127,13 +1213,17 @@ def hook_stop(_args) -> int:
             steps.append(f"merge the questions and answers in {', '.join(s['path'] for s in strays[:5])}"
                          + ("…" if len(strays) > 5 else "")
                          + " into the central list (the 'organize' steps: import them, then point each file at the "
-                           "Q-numbers that now hold them)")
+                           "Q-numbers that now hold them; a file that must keep its list goes in "
+                           f"{STORE_REL.as_posix()}/allow.json)")
         if need_sync:
             steps.append("republish .claude/build-questions/page.html to the review page (docs/commands.md 'sync')")
         if dirty:
             steps.append(f"commit {STORE_REL.as_posix()}/ with this work (or say why not)")
         print(json.dumps({"decision": "block", "reason":
-              f"build-questions: the central question list changed. Before finishing: " + "; ".join(steps)
+              ("build-questions: questions or answers are stored outside the central list"
+               if strays and not (need_sync or dirty) else "build-questions: the central question list changed"
+               if not strays else "build-questions: the central question list changed, and questions or answers "
+               "are stored outside it") + ". Before finishing: " + "; ".join(steps)
               + ". Then finish your reply in one line."}))
     except Exception:
         pass
@@ -1438,6 +1528,7 @@ def cmd_record(args) -> int:
     if not enrolled(root):
         raise SystemExit("this repo has no central list yet: run `bq.py enroll` (or /build-questions:setup)")
     stats = add_to_store(root, repo, [rec])
+    stats["answered"] = len(stats.get("answered") or [])
     print(json.dumps({"id": rec["id"], **stats}))
     return 0
 
@@ -1528,6 +1619,7 @@ def cmd_merge_local(args) -> int:
             n_tx += len(got)
             incoming.extend(got)
     stats = add_to_store(root, repo, incoming)
+    stats["answered"] = len(stats.get("answered") or [])
     if n_local and not args.keep_local:
         log_path(repo).replace(log_path(repo).with_suffix(".merged"))
     _out({"repo": repo, "local": n_local, "transcript": n_tx, **stats})
