@@ -90,6 +90,10 @@ Each record: `id`, `n` (Q-number), `question`, `answer`, `topic`, `options`, `so
 `Recommended: `) and `notes` starting `Recommendation: ... Why: ...`; an answered one names who answered, or for a
 decision Claude made, how to undo it. `bq.py lint` lists open questions not in that format.
 
+From 0.7.0, `enroll` also commits a copy of the tool (`.claude/build-questions/tool/`) and hooks in the repo's
+`.claude/settings.json`, so every account and cloud container keeps questions and answers in the list from the first
+session, plugin installed or not: writes that store them elsewhere are refused.
+
 ## Email
 
 Set in the plugin's options, which Claude Code asks for when you enable the plugin (change them later with

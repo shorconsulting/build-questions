@@ -55,9 +55,12 @@ class Base(unittest.TestCase):
     def enroll(self):
         return json.loads(run(["enroll", "--root", str(self.root)]))
 
-    def hook(self, fn, payload):
+    def hook(self, fn, payload, as_repo_copy=True):
+        """Hooks run as the repo's committed copy by default (as the repo's own hooks do)."""
         out = io.StringIO()
-        with mock.patch("sys.stdin", io.StringIO(json.dumps(payload))), redirect_stdout(out):
+        here = (self.root / bq.TOOL_REL).resolve() if as_repo_copy else bq.HERE
+        with mock.patch("sys.stdin", io.StringIO(json.dumps(payload))), redirect_stdout(out), \
+                mock.patch.object(bq, "HERE", here):
             fn(None)
         return out.getvalue()
 
@@ -270,6 +273,176 @@ class TestFormats(Base):
             self.assertIn("Recommended: ", txt)
             self.assertIn("Recommendation: ", txt)
             self.assertIn("written back", txt)
+        readme = (bq.store_dir(self.root) / "README.md").read_text(encoding="utf-8")
+        for block in readme.split("```json\n")[1:]:
+            json.loads(block.split("\n```", 1)[0])  # every example line is valid JSON
+
+
+class TestRepoHooks(Base):
+    """0.7.0: the list's tool and hooks are committed in the repo, so every account and container runs them."""
+
+    def test_enroll_commits_the_tool_and_hooks_and_keeps_other_settings(self):
+        (self.root / ".claude").mkdir()
+        (self.root / ".claude" / "settings.json").write_text(json.dumps(
+            {"permissions": {"allow": ["Bash(ls:*)"]},
+             "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo mine"}]}]}}))
+        res = self.enroll()
+        self.assertEqual(res["repo_hooks"], "updated")
+        self.assertTrue((self.root / bq.TOOL_REL / "bq.py").exists())
+        self.assertTrue((self.root / bq.TOOL_REL / "page.html").exists())
+        cfg = json.loads((self.root / ".claude" / "settings.json").read_text())
+        self.assertEqual(cfg["permissions"], {"allow": ["Bash(ls:*)"]})
+        stop_cmds = [h["command"] for e in cfg["hooks"]["Stop"] for h in e["hooks"]]
+        self.assertIn("echo mine", stop_cmds)
+        self.assertEqual(sum(bq.HOOK_MARK in c for c in stop_cmds), 1)
+        self.assertEqual(cfg["hooks"]["PreToolUse"][-1]["matcher"], "Write|Edit|MultiEdit|NotebookEdit")
+        self.assertEqual(self.enroll()["repo_hooks"], "unchanged")  # idempotent, no duplicates
+
+    def test_the_committed_copy_runs_on_its_own(self):
+        self.enroll()
+        out = subprocess.run([sys.executable, str(self.root / bq.TOOL_REL / "bq.py"), "lint", "--root", str(self.root)],
+                             capture_output=True, text=True, env={**os.environ, "BUILD_QUESTIONS_HOME": str(self.home)})
+        self.assertEqual(json.loads(out.stdout)["not_in_format"], 0)
+
+    def test_plugin_hooks_stand_aside_where_the_repo_has_its_own(self):
+        self.enroll()
+        payload = {"cwd": str(self.root)}
+        self.assertEqual(self.hook(bq.hook_session_start, payload, as_repo_copy=False), "")
+        self.assertIn("nowhere else", self.hook(bq.hook_session_start, payload))
+
+    def test_guard_refuses_questions_or_answers_outside_the_list(self):
+        self.enroll()
+        def guard(path, content):
+            return self.hook(bq.hook_guard_write, {"cwd": str(self.root), "tool_name": "Write",
+                                                   "tool_input": {"file_path": str(self.root / path), "content": content}})
+        out = guard("docs/plan.md", "# Plan\n\n## Open questions\n\n- Which DB?\n")
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertIn("questions.jsonl", out)
+        self.assertTrue(guard("docs/Answers_2026-11-04.md", "his answers"))           # a new answers file, by name
+        (self.root / "docs").mkdir(exist_ok=True)
+        (self.root / "docs" / "Answers_2026-10-28.md").write_text("Q1: Which DB?\nA: Postgres\n")
+        self.assertEqual(guard("docs/Answers_2026-10-28.md",                         # organize's pointer line
+                               "Moved to the central list: Q001 (answered). See ../.claude/build-questions/QUESTIONS.md"), "")
+        self.assertTrue(guard("docs/Answers_2026-10-28.md", "Q2: Dark mode?\nA: Yes"))  # but no new answers in it
+        self.assertTrue(guard("docs/answers_2026-11-04.json", "{}"))                  # an answer store kept as data
+        self.assertEqual(guard("docs/plan.md", "# Plan\n\nBuild the thing.\n"), "")   # not a list of questions
+        self.assertEqual(guard("src/app.py", "Q1: x"), "")                            # code is not checked
+        self.assertEqual(guard(".claude/build-questions/notes.md", "## Open questions"), "")
+        self.assertEqual(guard("docs/adr/0001-db.md", "Decision: Postgres"), "")      # ADRs stay where they are
+        self.assertEqual(guard("docs/faq.md", "<!-- build-questions:allow -->\nQ: how?\nA: so"), "")
+        (bq.store_dir(self.root) / "allow.json").write_text(json.dumps({"paths": ["docs/help/"]}))
+        self.assertEqual(guard("docs/help/faq.md", "Q: how?"), "")
+
+    def test_scan_finds_answer_files_and_pages(self):
+        self.enroll()
+        (self.root / "docs").mkdir()
+        (self.root / "docs" / "Answers_2026-10-28.md").write_text("Everything he said.\n")
+        (self.root / "docs" / "answers_2026-11-04.json").write_text("{}")
+        (self.root / "docs" / "open-questions.html").write_text("<html></html>")
+        (self.root / "docs" / "package.json").write_text("{}")
+        found = {f["path"] for f in bq.scan_repo(self.root)}
+        self.assertEqual(found, {"docs/Answers_2026-10-28.md", "docs/answers_2026-11-04.json", "docs/open-questions.html"})
+
+    def test_stop_asks_to_merge_strays(self):
+        self.enroll()
+        subprocess.run(["git", "-C", str(self.root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"], check=True)
+        (self.root / "Answers.md").write_text("Q1: Which DB?\nA: Postgres\n")
+        out = json.loads(self.hook(bq.hook_stop, {"cwd": str(self.root)}))
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("Answers.md", out["reason"])
+
+    def test_import_says_where_the_answers_now_are(self):
+        self.enroll()
+        run(["record", "--root", str(self.root), "--question", "Which database should bookings use?",
+             "--options", "Postgres|SQLite", "--recommendation", "Postgres", "--why", "Managed."])
+        cand = self.root / "cand.json"
+        cand.write_text(json.dumps([
+            {"question": "Which database should bookings use?", "answer": "Postgres",
+             "source_ref": {"type": "file", "path": "docs/Answers.md", "line": 3}},
+            {"question": "Do we need dark mode?", "answer": "",
+             "source_ref": {"type": "file", "path": "docs/Answers.md", "line": 9}}]))
+        res = json.loads(run(["import", "--root", str(self.root), "--file", str(cand)]))
+        self.assertEqual(res["answered"], ["Q001"])
+        self.assertEqual(res["by_file"], {"docs/Answers.md": ["Q001", "Q002 (open)"]})
+        self.assertEqual(self.store()[0]["answer"], "Postgres")
+
+
+class TestReviewFindings(Base):
+    """The 0.7.0 review: no refusals of ordinary work, no opt-in by accident, worktrees are not strays."""
+
+    def guard(self, path, content):
+        return self.hook(bq.hook_guard_write, {"cwd": str(self.root), "tool_name": "Write",
+                                               "tool_input": {"file_path": str(self.root / path), "content": content}})
+
+    def test_ordinary_writes_are_not_refused(self):
+        self.enroll()
+        self.assertEqual(self.guard("HANDOFF.md", "- Decision: keep it (undo: revert PR #9)\nDecided without you: x"), "")
+        self.assertEqual(self.guard("docs/plan.md", "## Assumptions\n\nA) do this\nB) or that\n"), "")
+        self.assertEqual(self.guard("apps/CLAUDE.md", "## Open questions\n- see Q012"), "")
+        self.assertEqual(self.guard("docs/decisions/0001-db.md", "Decision: Postgres"), "")
+        self.assertEqual(self.guard(".github/ISSUE_TEMPLATE/question.yml", "name: Question"), "")
+        self.assertEqual(self.guard("src/madrid.json", "{}"), "")
+        self.assertEqual(self.guard("src/quadrant.json", "{}"), "")
+        self.assertTrue(self.guard("docs/open-questions.md", "notes"))  # a new question file is still refused
+
+    def test_lines_the_file_already_had_are_not_held_against_a_write(self):
+        self.enroll()
+        (self.root / "NOTES.md").write_text("# Notes\n\nQ1: Which DB?\n")
+        self.assertEqual(self.guard("NOTES.md", "# Notes\n\nQ1: Which DB?\n\nShipped the thing.\n"), "")
+        self.assertTrue(self.guard("NOTES.md", "# Notes\n\nQ1: Which DB?\nQ2: Dark mode?\n"))
+
+    def test_a_list_started_by_a_question_does_not_switch_on_refusals_or_stop(self):
+        self.hook(bq.hook_capture, self.ask_payload())
+        self.assertTrue(bq.enrolled(self.root))
+        self.assertFalse(bq.fully_enrolled(self.root))
+        self.assertEqual(self.guard("docs/plan.md", "## Open questions\n- Which DB?"), "")
+        self.assertEqual(self.hook(bq.hook_stop, {"cwd": str(self.root)}), "")
+
+    def test_capture_in_a_folder_that_cannot_be_written_keeps_the_question(self):
+        real_mkdir = bq.Path.mkdir
+        root = os.path.realpath(self.root)
+
+        def mkdir(path, *a, **kw):  # realpath: macOS /var is /private/var, Windows has short names
+            if os.path.realpath(path).startswith(root):
+                raise PermissionError("read-only checkout")
+            return real_mkdir(path, *a, **kw)
+        with mock.patch.object(bq.Path, "mkdir", mkdir):
+            out = self.hook(bq.hook_capture, self.ask_payload())
+        self.assertIn("on this computer", out)
+        self.assertEqual(len(bq.read_jsonl(bq.log_path("acme/app"))), 2)
+
+    def test_worktrees_and_ignored_files_are_not_strays(self):
+        self.enroll()
+        (self.root / ".gitignore").write_text(".claude/worktrees/\n")
+        wt = self.root / ".claude" / "worktrees" / "lane1"
+        (wt / ".claude" / "build-questions").mkdir(parents=True)
+        (wt / ".claude" / "build-questions" / "QUESTIONS.md").write_text("## Open questions\n")
+        (wt / "Answers.md").write_text("Q1: x\n")
+        (self.root / "Answers.md").write_text("Q1: x\n")
+        (self.root / ".claude" / "plans").mkdir(parents=True)
+        (self.root / ".claude" / "plans" / "x.md").write_text("## Open questions\n- Which DB?\n")
+        self.assertEqual(sorted(f["path"] for f in bq.scan_repo(self.root)), [".claude/plans/x.md", "Answers.md"])
+
+    def test_plugin_says_when_the_repo_copy_is_older(self):
+        self.enroll()
+        tool = self.root / bq.TOOL_REL / "bq.py"
+        tool.write_text(tool.read_text().replace(f'VERSION = "{bq.VERSION}"', 'VERSION = "0.6.9"'))
+        out = self.hook(bq.hook_session_start, {"cwd": str(self.root)}, as_repo_copy=False)
+        self.assertIn("0.6.9", out)
+
+    def test_settings_entry_shared_with_the_users_own_hook_keeps_theirs(self):
+        (self.root / ".claude").mkdir()
+        (self.root / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+            {"type": "command", "command": "echo mine"},
+            {"type": "command", "command": bq.repo_hook_command("hook-stop")}]}], "Weird": "x"}}))
+        self.enroll()
+        cfg = json.loads((self.root / ".claude" / "settings.json").read_text())
+        cmds = [h["command"] for e in cfg["hooks"]["Stop"] for h in e["hooks"]]
+        self.assertEqual(cmds.count("echo mine"), 1)
+        self.assertEqual(sum(bq.HOOK_MARK in c for c in cmds), 1)
+        (self.root / ".claude" / "settings.json").write_text(json.dumps({"hooks": "not a dict"}))
+        self.assertEqual(json.loads(run(["hooks", "--root", str(self.root)]))["repo_hooks"], "updated")
 
 
 class TestScanImport(Base):
@@ -301,17 +474,23 @@ class TestScanImport(Base):
 
 
 class TestHooks(Base):
-    def test_capture_goes_to_local_log_until_enrolled_then_merges(self):
+    def test_first_capture_starts_the_list_inside_the_repo(self):
         out = self.hook(bq.hook_capture, self.ask_payload())
-        self.assertIn("locally", out)
-        self.assertEqual(len(bq.read_jsonl(bq.log_path("acme/app"))), 2)
-        self.enroll()
-        res = json.loads(run(["merge-local", "--root", str(self.root)]))
-        self.assertEqual(res["added"], 2)
-        self.assertEqual(bq.read_jsonl(bq.log_path("acme/app")), [])
-        out = self.hook(bq.hook_capture, self.ask_payload(tool_use_id="toolu_10"))
         self.assertIn("questions.jsonl", out)
+        self.assertEqual(len(self.store()), 2)                       # in the repo, not on this computer
+        self.assertFalse(bq.log_path("acme/app").exists())
+        self.assertTrue((bq.store_dir(self.root) / "README.md").exists())
+        self.hook(bq.hook_capture, self.ask_payload(tool_use_id="toolu_10"))
         self.assertEqual(len(self.store()), 2)  # same questions again: merged, not duplicated
+
+    def test_capture_outside_a_git_repo_waits_on_this_computer_then_merges(self):
+        loose = Path(self.tmp.name) / "loose"
+        loose.mkdir()
+        out = self.hook(bq.hook_capture, self.ask_payload(cwd=str(loose)))
+        self.assertIn("not a git repo", out)
+        self.enroll()
+        logged = bq.read_jsonl(bq.log_path(bq.detect_repo(str(loose))))
+        self.assertEqual(len(logged), 2)
 
     def test_capture_ignores_other_tools_and_bad_input(self):
         self.assertEqual(self.hook(bq.hook_capture, {"tool_name": "Bash"}), "")
