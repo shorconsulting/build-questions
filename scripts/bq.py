@@ -761,7 +761,7 @@ NAME_RE = re.compile(r"(question|decision|answer|clarification|open[-_ ]?items|u
 DIR_RE = re.compile(r"(^|/)(adr|adrs|decisions|decision-log|questions)(/|$)", re.I)
 # Places that hold decisions or questions on purpose, which the guard never refuses: ADR and decision-log folders,
 # any CLAUDE.md (memory), GitHub's own templates, and Claude's own folder (settings, worktrees, the list itself).
-ALLOWED_RE = re.compile(r"(^|/)(adrs?|decisions|decision-log)/|(^|/)CLAUDE\.md$|^\.github/|^\.claude/", re.I)
+ALLOWED_RE = re.compile(r"(^|/)(adrs?|decisions|decision-log)/|(^|/)CLAUDE\.md$|^\.github/|^\.claude/(settings[^/]*\.json$|worktrees/|build-questions/)", re.I)
 HEAD_RE = re.compile(r"^\s{0,3}#{1,6}\s*(open\s+|outstanding\s+|unresolved\s+|pending\s+)?"
                      r"(questions?|decisions?|clarifications?|unknowns|assumptions|to\s+confirm|tbd)\b", re.I)
 LINE_RES = [
@@ -876,28 +876,27 @@ def scan_repo(root: Path, include_known: bool = False, limit_files: int = 4000) 
     known = read_sources(root)
     out, seen = [], 0
     for p in _candidate_files(root):
-        if True:
-            fn = p.name
-            if any(part in SKIP_DIRS for part in p.relative_to(root).parts[:-1]):
-                continue
-            if f"/{STORE_REL.as_posix()}/" in "/" + p.relative_to(root).as_posix():
-                continue
-            ext = p.suffix.lower()
-            if ext not in TEXT_EXT and not (ext in NAMED_EXT and NAME_RE.search(fn)):
-                continue
-            seen += 1
-            if seen > limit_files:
-                return out
-            rel = p.relative_to(root).as_posix()
-            if _allowed(root, rel):
-                continue
-            hits = scan_file(p, rel)
-            if not hits:
-                continue
-            sha = _sha(p)
-            if not include_known and known.get(rel) == sha:
-                continue
-            out.append({"path": rel, "sha": sha, "previously_merged": rel in known, "hits": hits})
+        fn = p.name
+        if any(part in SKIP_DIRS for part in p.relative_to(root).parts[:-1]):
+            continue
+        if f"/{STORE_REL.as_posix()}/" in "/" + p.relative_to(root).as_posix():
+            continue
+        ext = p.suffix.lower()
+        if ext not in TEXT_EXT and not (ext in NAMED_EXT and NAME_RE.search(fn)):
+            continue
+        seen += 1
+        if seen > limit_files:
+            return out
+        rel = p.relative_to(root).as_posix()
+        if _allowed(root, rel):
+            continue
+        hits = scan_file(p, rel)
+        if not hits:
+            continue
+        sha = _sha(p)
+        if not include_known and known.get(rel) == sha:
+            continue
+        out.append({"path": rel, "sha": sha, "previously_merged": rel in known, "hits": hits})
     return out
 
 

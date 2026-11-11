@@ -420,7 +420,9 @@ class TestReviewFindings(Base):
         (wt / ".claude" / "build-questions" / "QUESTIONS.md").write_text("## Open questions\n")
         (wt / "Answers.md").write_text("Q1: x\n")
         (self.root / "Answers.md").write_text("Q1: x\n")
-        self.assertEqual([f["path"] for f in bq.scan_repo(self.root)], ["Answers.md"])
+        (self.root / ".claude" / "plans").mkdir(parents=True)
+        (self.root / ".claude" / "plans" / "x.md").write_text("## Open questions\n- Which DB?\n")
+        self.assertEqual(sorted(f["path"] for f in bq.scan_repo(self.root)), [".claude/plans/x.md", "Answers.md"])
 
     def test_plugin_says_when_the_repo_copy_is_older(self):
         self.enroll()
