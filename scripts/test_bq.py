@@ -156,16 +156,16 @@ class TestStore(Base):
         d = self.root / ".claude" / "build-questions"
         for f in ("questions.jsonl", "QUESTIONS.md", "README.md"):
             self.assertTrue((d / f).exists(), f)
-        self.assertIn("merge=union", (self.root / ".gitattributes").read_text())
+        self.assertIn("merge=union", (self.root / ".gitattributes").read_text(encoding="utf-8"))
         res2 = self.enroll()
         self.assertEqual(res2["claude_md"], "unchanged")
         self.assertFalse(res2["gitattributes_changed"])
-        self.assertEqual((self.root / "CLAUDE.md").read_text().count(bq.MEM_START), 1)
+        self.assertEqual((self.root / "CLAUDE.md").read_text(encoding="utf-8").count(bq.MEM_START), 1)
 
     def test_memory_block_replaced_in_place(self):
         (self.root / "CLAUDE.md").write_text("# App\n\nOwn notes.\n\n" + bq.MEM_START + "\nold\n" + bq.MEM_END + "\n\nMore.\n")
         self.enroll()
-        txt = (self.root / "CLAUDE.md").read_text()
+        txt = (self.root / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertIn("Own notes.", txt)
         self.assertIn("More.", txt)
         self.assertNotIn("\nold\n", txt)
@@ -174,7 +174,7 @@ class TestStore(Base):
     def test_user_memory(self):
         res = json.loads(run(["memory", "--user", "--root", str(self.root)]))
         self.assertEqual(res, {"user": "created"})
-        self.assertIn("build-questions", (self.user_home / ".claude" / "CLAUDE.md").read_text())
+        self.assertIn("build-questions", (self.user_home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8"))
 
     def test_hand_appended_line_without_id_is_read(self):
         self.enroll()
@@ -191,7 +191,7 @@ class TestStore(Base):
         p.write_text(json.dumps({"question": "Which DB?", "answer": "Postgres", "history": [
             {"at": "2026-10-01T00:00:00Z", "question": "DB?"}, {"at": "2026-10-02T00:00:00Z", "answer": "MySQL"}]}) + "\n")
         self.enroll()
-        self.assertIn("(was: ~~MySQL~~)", (p.parent / "QUESTIONS.md").read_text())
+        self.assertIn("(was: ~~MySQL~~)", (p.parent / "QUESTIONS.md").read_text(encoding="utf-8"))
 
     def test_union_merge_duplicates_latest_wins(self):
         self.enroll()
@@ -218,7 +218,58 @@ class TestStore(Base):
         run(["set-answer", "--root", str(self.root), "Q001", "Orange", "--request", "r1"])
         r = self.store()[0]
         self.assertEqual((r["answer"], r["status"], r["history"][0]["answer"]), ("Orange", "changed", "Green"))
-        self.assertIn("Orange", (bq.store_dir(self.root) / "QUESTIONS.md").read_text())
+        self.assertIn("Orange", (bq.store_dir(self.root) / "QUESTIONS.md").read_text(encoding="utf-8"))
+
+
+class TestFormats(Base):
+    """Open and answered questions have different formats (David S, 11 Nov 2026)."""
+
+    def test_open_format_problems(self):
+        good = {"answer": "", "options": [{"label": "Recommended: Stripe", "description": ""}, {"label": "Square", "description": ""}],
+                "notes": bq.open_notes("Stripe", "Least setup", "built today: none")}
+        self.assertEqual(bq.open_format_problems(good), [])
+        self.assertEqual(bq.open_format_problems({"answer": "Stripe"}), [])
+        bare = {"answer": "", "options": [], "notes": "Open for the owner"}
+        self.assertEqual(len(bq.open_format_problems(bare)), 3)
+        self.assertTrue(bq.open_format_problems(dict(good, options=list(reversed(good["options"])))))
+
+    def test_record_refuses_an_open_question_not_in_format(self):
+        self.enroll()
+        with self.assertRaises(SystemExit):
+            run(["record", "--root", str(self.root), "--question", "Which provider takes card payments?"])
+        self.assertEqual(self.store(), [])
+
+    def test_record_builds_the_open_format(self):
+        self.enroll()
+        run(["record", "--root", str(self.root), "--question", "Which provider takes card payments?",
+             "--options", "Square|Stripe|Braintree", "--recommendation", "Stripe", "--why", "Least setup.",
+             "--notes", "Nothing is built yet"])
+        r = self.store()[0]
+        self.assertEqual([o["label"] for o in r["options"]], ["Recommended: Stripe", "Square", "Braintree"])
+        self.assertTrue(r["notes"].startswith("Recommendation: Stripe. Why: Least setup. To answer, press Request a change"))
+        self.assertTrue(r["notes"].endswith("| Nothing is built yet"))
+        self.assertEqual((r["answer"], r["status"]), ("", "unanswered"))
+        self.assertEqual(bq.open_format_problems(r), [])
+
+    def test_lint_and_status_count_open_questions_not_in_format(self):
+        self.enroll()
+        with bq.store_file(self.root).open("a") as f:
+            f.write(json.dumps({"question": "Dark mode?", "answer": ""}) + "\n")
+            f.write(json.dumps({"question": "Which DB?", "answer": "Postgres"}) + "\n")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = bq.main(["lint", "--root", str(self.root)])
+        res = json.loads(out.getvalue())
+        self.assertEqual((code, res["open"], res["not_in_format"]), (1, 1, 1))
+        self.assertEqual(json.loads(run(["status", "--root", str(self.root)]))["open_not_in_format"], 1)
+
+    def test_memory_and_readme_carry_both_formats(self):
+        self.enroll()
+        for txt in ((self.root / "CLAUDE.md").read_text(encoding="utf-8"), (bq.store_dir(self.root) / "README.md").read_text(encoding="utf-8"),
+                    bq.USER_MEMORY_BLOCK):
+            self.assertIn("Recommended: ", txt)
+            self.assertIn("Recommendation: ", txt)
+            self.assertIn("written back", txt)
 
 
 class TestScanImport(Base):
@@ -296,8 +347,8 @@ class TestPage(Base):
     def test_link_is_committed_so_other_accounts_find_the_page(self):
         self.enroll()
         run(["link", "https://claude.ai/artifact/abc", "--title", "App", "--root", str(self.root)])
-        self.assertIn("claude.ai/artifact/abc", (self.root / ".claude" / "build-questions" / "page.json").read_text())
-        self.assertIn("claude.ai/artifact/abc", (self.root / "CLAUDE.md").read_text())
+        self.assertIn("claude.ai/artifact/abc", (self.root / ".claude" / "build-questions" / "page.json").read_text(encoding="utf-8"))
+        self.assertIn("claude.ai/artifact/abc", (self.root / "CLAUDE.md").read_text(encoding="utf-8"))
         (self.home / "config.json").unlink()  # another account or computer: no local config
         self.assertEqual(json.loads(run(["status", "--root", str(self.root)]))["page"], "https://claude.ai/artifact/abc")
         ctx = json.loads(self.hook(bq.hook_session_start, {"cwd": str(self.root)}))["hookSpecificOutput"]["additionalContext"]
@@ -316,7 +367,7 @@ class TestPage(Base):
         self.enroll()
         run(["enroll", "--root", str(self.root), "--title", "Tidy <Haus>"])
         run(["record", "--root", str(self.root), "--question", "Closes </script><b>?", "--answer", "Green"])
-        html = (self.root / ".claude" / "build-questions" / "page.html").read_text()
+        html = (self.root / ".claude" / "build-questions" / "page.html").read_text(encoding="utf-8")
         self.assertIn("<title>Tidy &lt;Haus&gt; Build Questions</title>", html)
         seed = html.split('id="bq-seed">\n', 1)[1].split("\n</script>", 1)[0]
         self.assertNotIn("<", seed)  # nothing in a question can close the script tag
@@ -376,7 +427,7 @@ class TestEmail(unittest.TestCase):
         self.assertIn("https://claude.ai/artifact/x#open", b)
 
     def test_bq_has_no_network_or_credentials(self):
-        src = Path(bq.__file__).read_text()
+        src = Path(bq.__file__).read_text(encoding="utf-8")
         for bad in ("urllib", "smtplib", "API_KEY", "PASSWORD", "import requests", "http.client"):
             self.assertNotIn(bad, src)
 

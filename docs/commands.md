@@ -21,6 +21,10 @@ checkout; add `--root <checkout>` to work on another.
 - **Capture.** A hook on `AskUserQuestion` writes each question, its options and the answer straight into the
   central list (or into `~/.build-questions/log/` on a repo that has no list yet). Questions asked in plain text,
   and decisions made without asking, are recorded with `bq.py record` (see the skill).
+- **Formats.** An open question has no answer, 2 to 4 options with the recommended one first (`Recommended: `) and
+  notes starting `Recommendation: ... Why: ...`; an answered one has the answer and who gave it (or how to undo a
+  decision Claude made). `bq.py record` refuses an open question not in that format, `bq.py lint` lists any in the
+  list, and `bq.py status` counts them (`open_not_in_format`).
 - **Guardrails.** A hook on Write/Edit flags any edit that starts a list of questions or decisions somewhere else.
   At session start a hook reports questions waiting to be merged: files outside the list, and questions captured
   before the list existed. The Stop hook reminds once to republish the page and commit the list.

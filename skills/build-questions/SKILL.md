@@ -36,12 +36,32 @@ No `.claude/build-questions/` folder? Questions are still captured on this compu
   (Database, Auth, Pricing, Design, Scope...). Give each option a description of what it means for the product.
 - One decision per question.
 
+## Every question, in the right format
+
+Every question raised while building goes into the list as it comes up, whatever its source: asked in chat, decided
+by you, raised in a call, a report, a review, or a PR's "Decided without you". An answer given anywhere else (a call,
+a chat, an answers page) is written back onto that question's own line, so an answered question never shows as
+waiting. Open and answered questions have different formats (`.claude/build-questions/README.md` has examples):
+
+- **Open** (waiting for a person): `answer` empty, `status` `unanswered`; the question in plain words that stand
+  alone (no requirement ids or code names); 2 to 4 `options`, the recommended one first with its label starting
+  `Recommended: `; `notes` starting exactly `Recommendation: <sentence>. Why: <reason>. To answer, press Request a
+  change and pick an option or write your own.`, then ` | ` and context (what is built today, sources, and who the
+  question is for if not the owner). `bq.py record` builds this from `--options`, `--recommendation` and `--why`, and
+  refuses an open question without them.
+- **Answered**: the `answer`, `status` `answered`, and in `notes` who answered, quoted, with the date; for a decision
+  you made (`--source decided`), that it is the owner's to correct and how to undo it.
+
+`bq.py lint` lists open questions not in the open format; fix them (or record their answers) before finishing.
+
 ## Recording what the hook can't see
 
 Right after the answer, run `bq.py record` when:
 
 - you asked in plain text and the person answered in chat:
   `bq.py record --question "..." --answer "..." --topic Design --options "A|B|C"`
+- a question is still open (you are asking it in plain text, or found it in a call, report or review):
+  `bq.py record --question "..." --topic Design --options "A|B|C" --recommendation A --why "..." --notes "context"`
 - you made a product decision yourself instead of asking (an autopilot policy said to decide, or the choice was
   forced): `--source decided`, the decision as the answer, the reason in `--notes`. Reviewers see these as
   "Decided by Claude" and can request a change like any other.
