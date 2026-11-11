@@ -401,10 +401,10 @@ class TestReviewFindings(Base):
 
     def test_capture_in_a_folder_that_cannot_be_written_keeps_the_question(self):
         real_mkdir = bq.Path.mkdir
-        root = str(self.root)
+        root = os.path.realpath(self.root)
 
-        def mkdir(path, *a, **kw):
-            if str(path).startswith(root):
+        def mkdir(path, *a, **kw):  # realpath: macOS /var is /private/var, Windows has short names
+            if os.path.realpath(path).startswith(root):
                 raise PermissionError("read-only checkout")
             return real_mkdir(path, *a, **kw)
         with mock.patch.object(bq.Path, "mkdir", mkdir):
