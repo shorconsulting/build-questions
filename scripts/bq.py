@@ -943,17 +943,27 @@ def hook_capture(_args) -> int:
         root = repo_root(cwd)
         if plugin_defers(root):
             return 0
+        if root and not enrolled(root):
+            # The list lives in the repo from the first question: start it here rather than outside the repo.
+            store_dir(root).mkdir(parents=True, exist_ok=True)
+            store_file(root).touch()
+            (store_dir(root) / "README.md").write_text(STORE_README, encoding="utf-8", newline="\n")
+            started = True
+        else:
+            started = False
         if enrolled(root):
             add_to_store(root, repo, recs)
             _emit("PostToolUse", f"build-questions recorded {len(recs)} question(s) in "
-                                 f"{STORE_REL.as_posix()}/questions.jsonl. Commit it with this work.")
+                                 f"{STORE_REL.as_posix()}/questions.jsonl. Commit it with this work."
+                                 + (" This repo's list was just started there; run /build-questions:setup (or "
+                                    "`bq.py enroll`) to add its memory block and committed hooks." if started else ""))
         else:
             p = log_path(repo)
             p.parent.mkdir(parents=True, exist_ok=True)
             with p.open("a", encoding="utf-8", newline="\n") as f:
                 f.write("".join(json.dumps(r, sort_keys=True) + "\n" for r in recs))
-            _emit("PostToolUse", f"build-questions saved {len(recs)} question(s) for {repo} locally; this repo "
-                                 f"has no central list yet (/build-questions:setup creates it).")
+            _emit("PostToolUse", f"build-questions saved {len(recs)} question(s) for {repo} on this computer: "
+                                 f"this folder is not a git repo, so there is no repo to keep them in yet.")
     except Exception:  # never break the session
         pass
     return 0

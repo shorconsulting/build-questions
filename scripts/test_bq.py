@@ -397,17 +397,23 @@ class TestScanImport(Base):
 
 
 class TestHooks(Base):
-    def test_capture_goes_to_local_log_until_enrolled_then_merges(self):
+    def test_first_capture_starts_the_list_inside_the_repo(self):
         out = self.hook(bq.hook_capture, self.ask_payload())
-        self.assertIn("locally", out)
-        self.assertEqual(len(bq.read_jsonl(bq.log_path("acme/app"))), 2)
-        self.enroll()
-        res = json.loads(run(["merge-local", "--root", str(self.root)]))
-        self.assertEqual(res["added"], 2)
-        self.assertEqual(bq.read_jsonl(bq.log_path("acme/app")), [])
-        out = self.hook(bq.hook_capture, self.ask_payload(tool_use_id="toolu_10"))
         self.assertIn("questions.jsonl", out)
+        self.assertEqual(len(self.store()), 2)                       # in the repo, not on this computer
+        self.assertFalse(bq.log_path("acme/app").exists())
+        self.assertTrue((bq.store_dir(self.root) / "README.md").exists())
+        self.hook(bq.hook_capture, self.ask_payload(tool_use_id="toolu_10"))
         self.assertEqual(len(self.store()), 2)  # same questions again: merged, not duplicated
+
+    def test_capture_outside_a_git_repo_waits_on_this_computer_then_merges(self):
+        loose = Path(self.tmp.name) / "loose"
+        loose.mkdir()
+        out = self.hook(bq.hook_capture, self.ask_payload(cwd=str(loose)))
+        self.assertIn("not a git repo", out)
+        self.enroll()
+        logged = bq.read_jsonl(bq.log_path(bq.detect_repo(str(loose))))
+        self.assertEqual(len(logged), 2)
 
     def test_capture_ignores_other_tools_and_bad_input(self):
         self.assertEqual(self.hook(bq.hook_capture, {"tool_name": "Bash"}), "")

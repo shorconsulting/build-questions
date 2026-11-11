@@ -13,6 +13,8 @@
 - `scan` also finds answers files and question or answer stores kept as JSON, HTML, CSV or YAML. `import` reports
   which questions got answers (`answered`) and each file's questions as Q-numbers (`by_file`), so organize leaves a
   line where they were saying where the answers now are. The Stop hook asks for strays to be merged.
+- The first question captured in a git repo starts that repo's `.claude/build-questions/` list and goes straight
+  in; questions wait on this computer (`~/.build-questions/log/`) only when the folder is not a git repo.
 - Fix: the README's answered example is valid JSON.
 
 ## 0.6.0 (2026-11-11)
