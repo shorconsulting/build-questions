@@ -51,6 +51,11 @@ Right after the answer, run `bq.py record` when:
 Without the plugin's script (another account, no plugin), append one line to `questions.jsonl` in the format
 `.claude/build-questions/README.md` gives.
 
+A question you record without an answer is open, and the page puts it to the person with an answer box: give it
+`--background` (what it is about and why it matters, two to four plain sentences), `--recommendation` (what you
+recommend and why) and `--options` with the recommended one first. Never record a question as open that a later
+note, call or chat already answered: record the answer, with its source in `--notes`.
+
 Don't record implementation trivia (variable names, which test file) or questions about Claude Code itself.
 
 ## Never keep questions anywhere else

@@ -350,7 +350,7 @@ def merge_records(existing: list[dict], incoming: list[dict]) -> tuple[list[dict
         tgt["sources"] = _merge_sources(tgt.get("sources"), inc.get("sources"))
         if inc.get("asked_at") and inc["asked_at"] < (tgt.get("asked_at") or "~"):
             tgt["asked_at"] = inc["asked_at"]
-        for f in ("topic", "notes"):
+        for f in ("topic", "notes", "background", "recommendation"):
             if not tgt.get(f) and inc.get(f):
                 tgt[f] = inc[f]
         if not tgt.get("options") and inc.get("options"):
@@ -407,7 +407,9 @@ def render_md(recs: list[dict], repo: str, root: Path | None = None) -> str:
     open_ = [r for r in recs if not r.get("answer")]
     if open_:
         out += ["## Waiting for an answer", ""]
-        out += [f"- **Q{r['n']:03d}**{' · ' + r['topic'] if r.get('topic') else ''}: {r['question']}" for r in open_]
+        out += [f"- **Q{r['n']:03d}**{' · ' + r['topic'] if r.get('topic') else ''}: {r['question']}"
+                + (f"  \n  Background: {r['background']}" if r.get("background") else "")
+                + (f"  \n  Recommended: {r['recommendation']}" if r.get("recommendation") else "") for r in open_]
         out.append("")
     topics: dict[str, list] = {}
     for r in recs:
@@ -443,7 +445,8 @@ Append one line (keep it on one line):
 - `answer`: empty string if not answered yet.
 - `topic`: the area (Database, Auth, Pricing, Design, Scope...).
 - `source`: `prose` (asked in chat), `decided` (Claude chose without asking), or `ask` (the question tool).
-- Optional: `options` ([{"label", "description"}]), `notes`.
+- Optional: `options` ([{"label", "description"}]), `notes`; for an open question, `background` (what it is
+  about and why it matters) and `recommendation` (the answer you recommend, and why).
 
 To change an answer, append the same question again with the new answer and a later `updated_at`: the plugin
 keeps the old answer in `history`. The plugin fills in `id`, `n` and the rest the next time it runs.
@@ -909,7 +912,7 @@ def default_transcript_dir(cwd: str) -> Path:
 # ---------------------------------------------------------------- the page
 
 PAGE_FIELDS = ("id", "n", "repo", "asked_at", "updated_at", "source", "topic", "question", "options", "multi",
-               "answer", "custom_answer", "notes", "status", "history", "aliases")
+               "answer", "custom_answer", "notes", "status", "history", "aliases", "background", "recommendation")
 
 
 def page_doc(r: dict) -> dict:
@@ -1125,19 +1128,15 @@ def cmd_status(args) -> int:
 def cmd_record(args) -> int:
     root, repo = _root(args), _repo(args)
     asked = now_iso()
-    opts = []
-    if args.options:
-        try:
-            raw = json.loads(args.options)
-        except ValueError:
-            raw = [o.strip() for o in args.options.split("|") if o.strip()]
-        for o in raw:
-            opts.append(o if isinstance(o, dict) else {"label": str(o), "description": ""})
+    opts = _parse_options(args.options) if args.options else []
     rec = {"id": make_id(repo, args.session or "", args.question, asked), "repo": repo, "asked_at": asked,
            "updated_at": asked, "source": args.source, "sources": [{"type": args.source}],
            "topic": args.topic or "", "question": args.question.strip(), "options": opts,
            "answer": args.answer or "", "notes": args.notes or "",
            "custom_answer": bool(opts) and (args.answer or "") not in {o["label"] for o in opts}}
+    for f in ("background", "recommendation"):
+        if getattr(args, f, None):
+            rec[f] = getattr(args, f).strip()
     if not enrolled(root):
         raise SystemExit("this repo has no central list yet: run `bq.py enroll` (or /build-questions:setup)")
     stats = add_to_store(root, repo, [rec])
@@ -1238,11 +1237,45 @@ def cmd_set_answer(args) -> int:
     if not tgt:
         raise SystemExit(f"no question {want}")
     now = now_iso()
-    hist = list(tgt.get("history") or [])
-    hist.append({"answer": tgt.get("answer", ""), "at": now, **({"request_id": args.request} if args.request else {})})
-    tgt.update(answer=args.answer, status="changed", history=hist, updated_at=now)
+    if not tgt.get("answer"):
+        # A first answer to an open question: nothing to keep in history, and it was not "changed".
+        tgt.update(answer=args.answer, status="answered", updated_at=now)
+        if args.request:
+            tgt["notes"] = (tgt.get("notes", "") + f" [answered on the page, request {args.request}]").strip()
+    else:
+        hist = list(tgt.get("history") or [])
+        hist.append({"answer": tgt.get("answer", ""), "at": now, **({"request_id": args.request} if args.request else {})})
+        tgt.update(answer=args.answer, status="changed", history=hist, updated_at=now)
     write_store(root, recs, repo)
     print(json.dumps({"id": tgt["id"], "n": tgt["n"], "answer": args.answer}))
+    return 0
+
+
+def _parse_options(raw_text: str) -> list[dict]:
+    try:
+        raw = json.loads(raw_text)
+    except ValueError:
+        raw = [o.strip() for o in raw_text.split("|") if o.strip()]
+    return [o if isinstance(o, dict) else {"label": str(o), "description": ""} for o in raw]
+
+
+def cmd_annotate(args) -> int:
+    """Give an open question what the page shows above the answer box: background, recommendation, options."""
+    root, repo = _root(args), _repo(args)
+    recs = read_store(root, repo)
+    tgt = next((r for r in recs if r["id"] == args.question or args.question in (r.get("aliases") or [])
+                or f"Q{r.get('n', 0):03d}".lower() == args.question.lower()), None)
+    if not tgt:
+        raise SystemExit(f"no question {args.question}")
+    if args.background is not None:
+        tgt["background"] = args.background.strip()
+    if args.recommendation is not None:
+        tgt["recommendation"] = args.recommendation.strip()
+    if args.options is not None:
+        tgt["options"] = _parse_options(args.options)
+    tgt["updated_at"] = now_iso()
+    write_store(root, recs, repo)
+    print(json.dumps({"id": tgt["id"], "n": tgt["n"]}))
     return 0
 
 
@@ -1335,6 +1368,8 @@ def main(argv=None) -> int:
     p.add_argument("--notes")
     p.add_argument("--source", choices=["prose", "decided", "ask"], default="prose")
     p.add_argument("--session")
+    p.add_argument("--background", help="open questions: what it is about and why it matters (page shows it collapsed)")
+    p.add_argument("--recommendation", help="open questions: the answer Claude recommends, and why")
 
     p = p_("scan", cmd_scan, "find files holding questions or decisions outside the central list")
     p.add_argument("--all", action="store_true", help="include files already merged and unchanged")
@@ -1353,6 +1388,11 @@ def main(argv=None) -> int:
     p.add_argument("question", help="id or Q-number (Q014)")
     p.add_argument("answer")
     p.add_argument("--request")
+    p = p_("annotate", cmd_annotate, "set an open question's background, recommendation and options")
+    p.add_argument("question", help="id or Q-number (Q014)")
+    p.add_argument("--background")
+    p.add_argument("--recommendation")
+    p.add_argument("--options", help='JSON list of {label, description}, or "A|B|C"')
 
     p = p_("digest", cmd_digest, "the scheduled summary of new, changed and waiting questions")
     p.add_argument("--since", help="ISO time of the last digest")

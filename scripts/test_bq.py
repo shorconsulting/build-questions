@@ -220,6 +220,26 @@ class TestStore(Base):
         self.assertEqual((r["answer"], r["status"], r["history"][0]["answer"]), ("Orange", "changed", "Green"))
         self.assertIn("Orange", (bq.store_dir(self.root) / "QUESTIONS.md").read_text())
 
+    def test_open_question_annotated_then_answered(self):
+        self.enroll()
+        run(["record", "--root", str(self.root), "--question", "Who may close a case?"])
+        run(["annotate", "--root", str(self.root), "Q001", "--background", "Closing ends access.",
+             "--recommendation", "Owner only", "--options", '[{"label": "Owner only (Recommended)", "description": "x"}]'])
+        r = self.store()[0]
+        self.assertEqual((r["status"], r["background"], r["options"][0]["label"]),
+                         ("unanswered", "Closing ends access.", "Owner only (Recommended)"))
+        self.assertEqual(bq.page_doc(r)["recommendation"], "Owner only")
+        run(["set-answer", "--root", str(self.root), "Q001", "Owner only", "--request", "r2"])
+        r = self.store()[0]
+        self.assertEqual((r["answer"], r["status"], r.get("history")), ("Owner only", "answered", None))
+
+    def test_merge_keeps_background_and_recommendation(self):
+        a = bq.clean({"question": "Who may close a case?", "answer": ""}, "o/r")
+        b = dict(a, background="Closing ends access.", recommendation="Owner only")
+        recs, _ = bq.merge_records([a], [b])
+        self.assertEqual((recs[0]["background"], recs[0]["recommendation"]), ("Closing ends access.", "Owner only"))
+        self.assertIn("Recommended: Owner only", bq.render_md(recs, "o/r"))
+
 
 class TestScanImport(Base):
     def test_scan_finds_strays_and_import_marks_them(self):

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.1 (2026-11-06)
+
+- Open questions are no longer shown like settled ones. Each open question on the page shows its background
+  (collapsed), Claude's recommendation, its options with descriptions, and a box to answer in your own words.
+  An answer from the page is a request with `kind: "answer"`; the owner's own is accepted at once and recorded
+  by the next `run` (`bq.py set-answer` now records a first answer as answered, not changed).
+- `bq.py annotate` sets an open question's `background`, `recommendation` and `options`; `record` takes
+  `--background` and `--recommendation`.
+- `organize` must look for a question's answer in later notes, transcripts and the owner's chat messages before
+  importing it as open. Importing scraped questions with empty answers is how one list reached ~300 "open"
+  questions that had mostly been settled.
+- The Open tab splits into "Needs an answer" and "Change requested", so unanswered questions no longer mix with
+  settled ones a reviewer reopened.
+- `background` and `recommendation` survive a merge (organize), and `QUESTIONS.md` shows them under each open
+  question.
+
 ## 0.5.0 (2026-11-04)
 
 - The repo is the only store of questions. `.claude/build-questions/page.html` is the review page with every

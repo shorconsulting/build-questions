@@ -56,7 +56,7 @@ It holds no questions: those are built into `page.html` from the repo.
 
 | Path | Holds | Written by |
 |---|---|---|
-| `requests/<id>` | One change request: `question_id`, `question`, `current_answer`, `proposed`, `reason`, `by` (user id), `created_at`, `status` (`open`, `accepted`, `declined`, `applied`), `decided_by`, `decided_at`, `decision_note`, `notified_at`, `resolution`, `resolved_at`, `link` | Reviewers create; the owner accepts or declines (page or chat); you set `notified_at` and resolve |
+| `requests/<id>` | One change request, or (`kind: "answer"`) an answer to an open question: `kind`, `question_id`, `question`, `current_answer`, `proposed`, `reason`, `by` (user id), `created_at`, `status` (`open`, `accepted`, `declined`, `applied`), `decided_by`, `decided_at`, `decision_note`, `notified_at`, `resolution`, `resolved_at`, `link` | Reviewers create; the owner accepts or declines (page or chat); you set `notified_at` and resolve |
 | `meta/project` | `schedule_label` (shown on the page), `last_digest_at`, `last_run_at` | You, on `setup`, `schedule` and `run` |
 | `settings/notify` | `method` (`resend`, `smtp`, `github`, `none`) and `github_login`. Editors only; reviewers cannot read it | You, on `setup` |
 
@@ -140,7 +140,19 @@ For each repo:
      "source_ref": {"type": "file", "path": "docs/plan.md", "line": 42}}]
    ```
 
-   - Rewrite each question so it stands alone; keep the answer's wording. `answer: ""` if it was never answered.
+   - Rewrite each question so it stands alone; keep the answer's wording.
+   - **Find the answer before you call it open.** A question scraped from an old note, action-item list or
+     handoff has usually been settled since. Before writing `answer: ""`, search the central list (same question
+     in other words, same requirement or action-item id), later notes and call transcripts, commit messages, and
+     the owner's own messages in this project's session transcripts. Found: set `answer` to it and put the
+     evidence (file and line, or transcript and time, with the person's words quoted) in `notes`. A builder's
+     reading, a proposal or a hedge is not an answer. Leave out a question a later decision made moot, and an
+     engineering one: decide it yourself and import it as `source: "decided"`.
+   - A question that is still open gets what the page shows above its answer box: `background` (two to four
+     plain sentences: what it is about and why it matters), `recommendation` (the answer you recommend, and why)
+     and two to four `options` (`{label, description}`, the recommended one first, its label ending
+     " (Recommended)"). Fix an existing open question with `bq.py annotate <Q-number> --background ...
+     --recommendation ... --options '<JSON>'`.
    - `source: "decided"` for a decision with no question behind it ("Decision: use Stripe").
    - `asked_at`: the date in the file if there is one, else the file's last commit date
      (`git log -1 --format=%cI -- <path>`).
@@ -207,15 +219,19 @@ runs `check`), and the page shows them at once.
 
 One scheduled run. It works unattended: no questions to the person, no merges into a protected branch, nothing
 destructive. Arguments: repos (`owner/repo ...` or `all-linked`; default from `bq.py schedule show`, else the
-current checkout) and `--steps` (default `organize,sync,check,digest`).
+current checkout) and `--steps` (default `organize,answers,sync,check,digest`).
 
 For each repo, in order, skipping steps not listed:
 
 1. **organize** (the section above), with its commit landing by pull request unless the repo's policy allows more.
    Keep its stats (added, merged, files cleaned).
-2. **sync** (below).
-3. **check** (below): emails change requests that have not been emailed yet.
-4. **digest**: read `last_digest_at` from the page's `meta/project` (none: the last 7 days), save the open and
+2. **answers**: `query` `requests` for `kind == "answer"` and `status == "accepted"` (the owner's own answers from
+   the page). Record each with `bq.py set-answer` as in **resolve**, commit the list, then `update` the request
+   `status: applied`, `resolved_at`. Recording is safe unattended; any build change an answer needs waits for a
+   live session, so add one line per such answer to your reply.
+3. **sync** (below).
+4. **check** (below): emails change requests that have not been emailed yet.
+5. **digest**: read `last_digest_at` from the page's `meta/project` (none: the last 7 days), save the open and
    accepted requests to a JSON file, then
    `bq.py digest --since <last_digest_at> --requests <file> --organized '<stats JSON>'` and send the printed
    subject and body with `send_email` (method `github`: post it as a comment on the `Build questions: change
@@ -280,6 +296,12 @@ page on its Open questions tab instead.
 
 Settles change requests with the owner and applies the accepted ones. Argument: a request id, a question number
 (`Q014`), or nothing for all open and accepted ones.
+
+Requests with `kind: "answer"` are answers to open questions given on the page. The owner's own arrive already
+`accepted`; anyone else's arrive `open` and are settled with the owner like a change request (step 1). Applying
+one (step 2) is `bq.py set-answer <Q-number> "<answer>" --request <id>`: `proposed` is the answer, and a `reason`
+is the person's added detail, kept in their words after it ("<proposed>. <reason>"). It is recorded as answered,
+not changed. Make whatever change the answer calls for in the build, if any, the usual way.
 
 1. For each **open** request, ask the owner with AskUserQuestion (one question per request, up to four per call):
    header = the question's topic, question = "Change Q014 'Which database…' from SQLite to Postgres? (asked by Dana:
