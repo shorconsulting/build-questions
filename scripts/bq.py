@@ -46,7 +46,7 @@ import sys
 from pathlib import Path
 
 SCHEMA = 2
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 STORE_REL = Path(".claude") / "build-questions"
 SIMILAR = 0.9
 MEM_START = "<!-- build-questions:start -->"
@@ -273,7 +273,8 @@ def clean(r: dict, repo: str = "") -> dict | None:
 
 
 RECOMMENDED = "Recommended: "
-ANSWER_HOW = "To answer, press Request a change and pick an option or write your own."
+ANSWER_HOW = "To answer, pick an option or write your own on the review page."
+ANSWER_HOW_OLD = "To answer, press Request a change and pick an option or write your own."
 
 
 def open_notes(recommendation: str, why: str, context: str = "") -> str:
@@ -298,7 +299,8 @@ def open_format_problems(r: dict) -> list[str]:
     if sum(1 for lb in labels if lb.startswith(RECOMMENDED)) > 1:
         probs.append("only one option may be the recommendation")
     notes = str(r.get("notes") or "")
-    if not (notes.startswith("Recommendation: ") and " Why: " in notes and ANSWER_HOW in notes):
+    if not (notes.startswith("Recommendation: ") and " Why: " in notes
+            and (ANSWER_HOW in notes or ANSWER_HOW_OLD in notes)):
         probs.append(f'notes must start "Recommendation: <sentence>. Why: <reason>. {ANSWER_HOW}"')
     return probs
 
@@ -461,7 +463,8 @@ def render_md(recs: list[dict], repo: str, root: Path | None = None) -> str:
     open_ = [r for r in recs if not r.get("answer")]
     if open_:
         out += ["## Waiting for an answer", ""]
-        out += [f"- **Q{r['n']:03d}**{' · ' + r['topic'] if r.get('topic') else ''}: {r['question']}" for r in open_]
+        out += [f"- **Q{r['n']:03d}**{' · ' + r['topic'] if r.get('topic') else ''}: {r['question']}"
+                + (f"  \n  _{r['notes']}_" if r.get("notes") else "") for r in open_]
         out.append("")
     topics: dict[str, list] = {}
     for r in recs:
@@ -513,7 +516,7 @@ or the same question text) replaces it, and the plugin keeps the old answer in `
 marked, and notes that give the recommendation and why:
 
 ```json
-{"question": "Which payment provider should take card payments?", "answer": "", "status": "unanswered", "topic": "Payments", "source": "prose", "asked_at": "2026-10-31T17:00:00Z", "options": [{"label": "Recommended: Stripe", "description": "Cards and Apple Pay; 2.9% + 30c"}, {"label": "Square", "description": ""}, {"label": "Braintree", "description": ""}], "notes": "Recommendation: Stripe. Why: It takes cards and wallets with the least setup. To answer, press Request a change and pick an option or write your own. | What is built today, sources, and who the question is for if not the owner"}
+{"question": "Which payment provider should take card payments?", "answer": "", "status": "unanswered", "topic": "Payments", "source": "prose", "asked_at": "2026-10-31T17:00:00Z", "options": [{"label": "Recommended: Stripe", "description": "Cards and Apple Pay; 2.9% + 30c"}, {"label": "Square", "description": ""}, {"label": "Braintree", "description": ""}], "notes": "Recommendation: Stripe. Why: It takes cards and wallets with the least setup. To answer, pick an option or write your own on the review page. | What is built today, sources, and who the question is for if not the owner"}
 ```
 
 **An answered question** has the answer, who gave it, and (for a decision Claude made) how to undo it:
@@ -530,7 +533,7 @@ marked, and notes that give the recommendation and why:
   say in `notes` that it is the owner's to correct, and how to undo it).
 - `options`: for an open question, 2 to 4 choices, the recommended one first with its label starting
   `Recommended: `. `notes` for an open question start exactly `Recommendation: <sentence>. Why: <reason>. To answer,
-  press Request a change and pick an option or write your own.`, then ` | ` and any context.
+  pick an option or write your own on the review page.`, then ` | ` and any context.
 - To answer an open question, append it again (same `id`) with `answer`, `status: "answered"` and a later
   `updated_at`. `bq.py lint` lists open questions that are not in the open format.
 
@@ -696,8 +699,8 @@ def repo_memory_block(repo: str, page: str | None) -> str:
         "the list, and leaves a line where they were naming the Q-numbers that now hold them (and which are answered).",
         "- Open and answered questions have different formats. Open: `answer` empty, `status` `unanswered`, 2 to 4 "
         "`options` with the recommended one first and its label starting `Recommended: `, and `notes` starting "
-        "`Recommendation: <sentence>. Why: <reason>. To answer, press Request a change and pick an option or write "
-        "your own.` Answered: the `answer`, `status` `answered`, who answered (quoted, with the date) or, for a "
+        "`Recommendation: <sentence>. Why: <reason>. To answer, pick an option or write your own on the review "
+        "page.` Answered: the `answer`, `status` `answered`, who answered (quoted, with the date) or, for a "
         f"decision you made, that it is the owner's to correct and how to undo it. `{rel}/README.md` has both; "
         "`bq.py lint` lists open questions not in the open format.",
         "- Don't start other lists of questions or decisions (QUESTIONS.md or DECISIONS.md elsewhere, \"Open "
@@ -1494,6 +1497,25 @@ def cmd_status(args) -> int:
     return 0
 
 
+def _open_fields(opts: list[dict], notes: str, recommendation: str | None, why: str | None) -> tuple[list, str]:
+    """Put the recommended option first, marked, and write the open-question notes around any context."""
+    rec_label = (recommendation or "").strip().removeprefix(RECOMMENDED)
+    if not rec_label:
+        return opts, notes
+    bare = [o for o in opts if o["label"].removeprefix(RECOMMENDED) != rec_label]
+    first = next((o for o in opts if o["label"].removeprefix(RECOMMENDED) == rec_label), {"label": rec_label, "description": ""})
+    if not notes.startswith("Recommendation: "):
+        notes = open_notes(rec_label, why or "", notes)
+    return [dict(first, label=RECOMMENDED + rec_label)] + bare, notes
+
+
+def open_context(notes: str) -> str:
+    """The background of an open question: what follows " | " in its notes (all of it if not in the open format)."""
+    notes = notes or ""
+    return notes.split(" | ", 1)[1] if notes.startswith("Recommendation: ") and " | " in notes else \
+        ("" if notes.startswith("Recommendation: ") else notes)
+
+
 def cmd_record(args) -> int:
     root, repo = _root(args), _repo(args)
     asked = now_iso()
@@ -1507,14 +1529,7 @@ def cmd_record(args) -> int:
             opts.append(o if isinstance(o, dict) else {"label": str(o), "description": ""})
     notes = args.notes or ""
     if not (args.answer or ""):
-        rec_label = (args.recommendation or "").strip()
-        if rec_label:
-            bare = [o for o in opts if o["label"].removeprefix(RECOMMENDED) != rec_label.removeprefix(RECOMMENDED)]
-            first = next((o for o in opts if o["label"].removeprefix(RECOMMENDED) == rec_label.removeprefix(RECOMMENDED)),
-                         {"label": rec_label, "description": ""})
-            opts = [dict(first, label=RECOMMENDED + first["label"].removeprefix(RECOMMENDED))] + bare
-            if not notes.startswith("Recommendation: "):
-                notes = open_notes(rec_label.removeprefix(RECOMMENDED), args.why or "", notes)
+        opts, notes = _open_fields(opts, notes, args.recommendation, args.why)
         probs = open_format_problems({"answer": "", "options": opts, "notes": notes})
         if probs:
             raise SystemExit("an open question must be in the open-question format: " + "; ".join(probs)
@@ -1654,11 +1669,53 @@ def cmd_set_answer(args) -> int:
     if not tgt:
         raise SystemExit(f"no question {want}")
     now = now_iso()
-    hist = list(tgt.get("history") or [])
-    hist.append({"answer": tgt.get("answer", ""), "at": now, **({"request_id": args.request} if args.request else {})})
-    tgt.update(answer=args.answer, status="changed", history=hist, updated_at=now)
+    if not tgt.get("answer"):
+        # A first answer to an open question: nothing to keep in history, and it was not "changed".
+        ctx = open_context(tgt.get("notes", ""))
+        how = f"Answered on the review page (request {args.request})." if args.request else ""
+        tgt.update(answer=args.answer, status="answered", updated_at=now,
+                   notes=" | ".join(x for x in (how, ctx) if x))
+    else:
+        hist = list(tgt.get("history") or [])
+        hist.append({"answer": tgt.get("answer", ""), "at": now, **({"request_id": args.request} if args.request else {})})
+        tgt.update(answer=args.answer, status="changed", history=hist, updated_at=now)
     write_store(root, recs, repo)
     print(json.dumps({"id": tgt["id"], "n": tgt["n"], "answer": args.answer}))
+    return 0
+
+
+def cmd_annotate(args) -> int:
+    """Put an open question into the open-question format: options, recommendation, why, background."""
+    root, repo = _root(args), _repo(args)
+    recs = read_store(root, repo)
+    tgt = next((r for r in recs if r["id"] == args.question or args.question in (r.get("aliases") or [])
+                or f"Q{r.get('n', 0):03d}".lower() == args.question.lower()), None)
+    if not tgt:
+        raise SystemExit(f"no question {args.question}")
+    if tgt.get("answer"):
+        raise SystemExit(f"{args.question} is answered; annotate is for open questions")
+    opts = tgt.get("options") or []
+    if args.options is not None:
+        try:
+            raw = json.loads(args.options)
+        except ValueError:
+            raw = [o.strip() for o in args.options.split("|") if o.strip()]
+        opts = [o if isinstance(o, dict) else {"label": str(o), "description": ""} for o in raw]
+    ctx = args.context if args.context is not None else open_context(tgt.get("notes", ""))
+    rec = args.recommendation or next((o["label"] for o in opts if o["label"].startswith(RECOMMENDED)), "")
+    why = args.why
+    if why is None and str(tgt.get("notes", "")).startswith("Recommendation: ") and " Why: " in tgt["notes"]:
+        why = tgt["notes"].split(" Why: ", 1)[1].split(". To answer,", 1)[0]
+    opts = [dict(o, label=o["label"].removeprefix(RECOMMENDED)) for o in opts]
+    opts, notes = _open_fields(opts, ctx, rec, why)
+    if not notes.startswith("Recommendation: "):
+        notes = ctx
+    probs = open_format_problems({"answer": "", "options": opts, "notes": notes})
+    if probs:
+        raise SystemExit("still not in the open-question format: " + "; ".join(probs))
+    tgt.update(options=opts, notes=notes, updated_at=now_iso())
+    write_store(root, recs, repo)
+    print(json.dumps({"id": tgt["id"], "n": tgt["n"]}))
     return 0
 
 
@@ -1774,6 +1831,12 @@ def main(argv=None) -> int:
     p.add_argument("question", help="id or Q-number (Q014)")
     p.add_argument("answer")
     p.add_argument("--request")
+    p = p_("annotate", cmd_annotate, "put an open question into the open format (fixes what lint lists)")
+    p.add_argument("question", help="id or Q-number (Q014)")
+    p.add_argument("--options", help='JSON list of {label, description}, or "A|B|C"')
+    p.add_argument("--recommendation", help="the recommended option's label")
+    p.add_argument("--why", help="why that is the recommendation")
+    p.add_argument("--context", help="background: what the question is about and why it matters")
 
     p = p_("digest", cmd_digest, "the scheduled summary of new, changed and waiting questions")
     p.add_argument("--since", help="ISO time of the last digest")

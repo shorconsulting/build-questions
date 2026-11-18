@@ -249,7 +249,7 @@ class TestFormats(Base):
              "--notes", "Nothing is built yet"])
         r = self.store()[0]
         self.assertEqual([o["label"] for o in r["options"]], ["Recommended: Stripe", "Square", "Braintree"])
-        self.assertTrue(r["notes"].startswith("Recommendation: Stripe. Why: Least setup. To answer, press Request a change"))
+        self.assertTrue(r["notes"].startswith("Recommendation: Stripe. Why: Least setup. " + bq.ANSWER_HOW))
         self.assertTrue(r["notes"].endswith("| Nothing is built yet"))
         self.assertEqual((r["answer"], r["status"]), ("", "unanswered"))
         self.assertEqual(bq.open_format_problems(r), [])
@@ -443,6 +443,29 @@ class TestReviewFindings(Base):
         self.assertEqual(sum(bq.HOOK_MARK in c for c in cmds), 1)
         (self.root / ".claude" / "settings.json").write_text(json.dumps({"hooks": "not a dict"}))
         self.assertEqual(json.loads(run(["hooks", "--root", str(self.root)]))["repo_hooks"], "updated")
+
+    def test_open_question_annotated_then_answered(self):
+        self.enroll()
+        # an open question captured before the open format (record refuses those now, so add it directly)
+        bq.add_to_store(self.root, "o/r", [{"question": "Who may close a case?", "answer": "",
+                                            "notes": "Closing ends the customer's access."}])
+        self.assertTrue(bq.open_format_problems(self.store()[0]))
+        run(["annotate", "--root", str(self.root), "Q001", "--options", "Any agent|Owner only",
+             "--recommendation", "Owner only", "--why", "closures stay deliberate"])
+        r = self.store()[0]
+        self.assertEqual(bq.open_format_problems(r), [])
+        self.assertEqual([o["label"] for o in r["options"]], ["Recommended: Owner only", "Any agent"])
+        self.assertTrue(r["notes"].endswith(" | Closing ends the customer's access."))  # context kept as background
+        self.assertIn("Recommendation: Owner only. Why: closures stay deliberate.", bq.render_md(self.store(), "o/r"))
+        run(["set-answer", "--root", str(self.root), "Q001", "Owner only", "--request", "r2"])
+        r = self.store()[0]
+        self.assertEqual((r["answer"], r["status"], r.get("history")), ("Owner only", "answered", None))
+        self.assertEqual(r["notes"], "Answered on the review page (request r2). | Closing ends the customer's access.")
+
+    def test_old_answer_wording_still_passes_lint(self):
+        notes = bq.open_notes("A", "because").replace(bq.ANSWER_HOW, bq.ANSWER_HOW_OLD)
+        r = {"answer": "", "options": [{"label": "Recommended: A"}, {"label": "B"}], "notes": notes}
+        self.assertEqual(bq.open_format_problems(r), [])
 
 
 class TestScanImport(Base):

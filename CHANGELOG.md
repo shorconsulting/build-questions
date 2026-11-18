@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.0 (2026-11-18)
+
+- Open questions on the review page get their own card: the context from their notes as a collapsible
+  Background, the recommendation and why, the options with their descriptions (recommended first), and a box to
+  answer in your own words. An answer from the page is a request with `kind: "answer"`; the owner's is accepted at
+  once and a reviewer's waits for the owner. The Open tab splits into "Needs an answer" and "Change requested".
+- `run` has an `answers` step that records the owner's page answers with `bq.py set-answer` and marks the requests
+  applied. `set-answer` records a first answer as answered, not changed, with no history entry, and keeps the
+  question's context in its notes.
+- New `bq.py annotate <Q-number>` puts an existing open question into the open format (`--options`,
+  `--recommendation`, `--why`, `--context`): the fix for what `lint` lists.
+- The open-question notes now say "To answer, pick an option or write your own on the review page." Notes with the
+  old wording still pass `lint`.
+- `QUESTIONS.md` shows each open question's notes.
+- `organize` must look for a question's answer in later notes, transcripts and the owner's chat messages before
+  importing it as open.
+
 ## 0.7.0 (2026-11-11)
 
 - The list travels with the repo. `enroll` (or `bq.py hooks`) commits a copy of the tool and page template in
