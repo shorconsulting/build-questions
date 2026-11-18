@@ -59,14 +59,16 @@ waiting. Open and answered questions have different formats (`.claude/build-ques
 
 - **Open** (waiting for a person): `answer` empty, `status` `unanswered`; the question in plain words that stand
   alone (no requirement ids or code names); 2 to 4 `options`, the recommended one first with its label starting
-  `Recommended: `; `notes` starting exactly `Recommendation: <sentence>. Why: <reason>. To answer, press Request a
-  change and pick an option or write your own.`, then ` | ` and context (what is built today, sources, and who the
+  `Recommended: `; `notes` starting exactly `Recommendation: <sentence>. Why: <reason>. To answer, pick an option or
+  write your own on the review page.`, then ` | ` and context (what is built today, sources, and who the
   question is for if not the owner). `bq.py record` builds this from `--options`, `--recommendation` and `--why`, and
-  refuses an open question without them.
+  refuses an open question without them. The page shows each part to the person above an answer box: the context
+  as Background, the recommendation and why, and the options with their descriptions.
 - **Answered**: the `answer`, `status` `answered`, and in `notes` who answered, quoted, with the date; for a decision
   you made (`--source decided`), that it is the owner's to correct and how to undo it.
 
-`bq.py lint` lists open questions not in the open format; fix them (or record their answers) before finishing.
+`bq.py lint` lists open questions not in the open format; fix them with `bq.py annotate <Q-number> --options ...
+--recommendation ... --why ... --context ...` (or record their answers) before finishing.
 
 ## Recording what the hook can't see
 
@@ -84,6 +86,9 @@ Right after the answer, run `bq.py record` when:
 
 Without the plugin's script (another account, no plugin), append one line to `questions.jsonl` in the format
 `.claude/build-questions/README.md` gives.
+
+Never record a question as open that a later note, call or chat already answered: record the answer, with its
+source in `--notes`.
 
 Don't record implementation trivia (variable names, which test file) or questions about Claude Code itself.
 

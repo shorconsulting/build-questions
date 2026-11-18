@@ -108,6 +108,15 @@ form.ask label.choice { display: flex; gap: 8px; align-items: flex-start }
 form.ask input[type=text], form.ask textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper) }
 form.ask textarea { min-height: 4.5rem; resize: vertical }
 .err { color: var(--no); font-size: .9rem; margin: 0 }
+/* Open (unanswered) question: background, recommendation, then the answer form */
+details.bg { font-size: .94rem }
+details.bg summary { cursor: pointer; color: var(--muted); font-weight: 700 }
+details.bg p { margin: 6px 0 0; overflow-wrap: anywhere; white-space: pre-line }
+.rec { border-left: 3px solid var(--accent); padding: 6px 12px; display: grid; gap: 2px }
+.rec .label { font: 700 .7rem/1 var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--accent) }
+.rec .val { font-weight: 700; overflow-wrap: anywhere }
+.rec .why { color: var(--muted); font-size: .92rem }
+form.ask .desc { display: block; color: var(--muted); font-size: .9rem }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 6px; font-weight: 700; z-index: 20 }
 
 /* Settled: one dense row per question. Number | question | answer | action */
@@ -134,6 +143,7 @@ form.ask textarea { min-height: 4.5rem; resize: vertical }
 }
 .empty { background: var(--paper); border: 1px dashed var(--rule); border-radius: 8px; padding: 28px 20px; display: grid; gap: 8px; text-align: left }
 .empty p { margin: 0; max-width: 38rem }
+h2.group { margin-top: 8px } h2.group:first-child { margin-top: 0 }
 footer { font-size: .85rem; color: var(--muted) }
 @media (prefers-reduced-motion: no-preference) { .q { transition: border-color .15s } .q:hover { border-color: var(--muted) } }
 </style>
@@ -265,7 +275,7 @@ footer { font-size: .85rem; color: var(--muted) }
       ${withQuestion && !q ? `<p class="q-text">${esc(r.question || "Question")}</p>` : ""}
       <div class="req-line"><span class="pill ${esc(r.status)}">${esc(statusText)}</span>
         <span class="muted">${esc(nameOf(r.by))} · ${esc(fmtDate(r.created_at))}</span></div>
-      <p>Proposed: <b>${esc(r.proposed || "A different answer")}</b>${withQuestion ? ` <span class="muted">(now: ${esc(r.current_answer || (q && q.answer) || "none")})</span>` : ""}</p>
+      <p>${r.kind === "answer" ? "Answer" : "Proposed"}: <b>${esc(r.proposed || "A different answer")}</b>${withQuestion ? ` <span class="muted">(now: ${esc(r.current_answer || (q && q.answer) || "none")})</span>` : ""}</p>
       ${r.reason ? `<p class="muted">“${esc(r.reason)}”</p>` : ""}
       ${r.decision_note ? `<p class="muted">Owner: ${esc(r.decision_note)}</p>` : ""}
       ${r.resolution ? `<p>${esc(r.resolution)}${r.link && /^https:\/\//.test(r.link) ? ` · <a href="${esc(r.link)}" target="_blank" rel="noopener">See the change</a>` : ""}</p>` : ""}
@@ -288,7 +298,54 @@ footer { font-size: .85rem; color: var(--muted) }
     </form>`;
   }
 
+  // An open question's notes: "Recommendation: <r>. Why: <w>. To answer, ... | <background>" (bq.py open_notes).
+  // The recommended option's label starts "Recommended: " (or ends "(Recommended)" from the question tool).
+  const isRec = (o) => /^recommended:\s*/i.test(o.label || "") || /\(recommended\)\s*$/i.test(o.label || "");
+  const bareLabel = (l) => String(l || "").replace(/^recommended:\s*/i, "").replace(/\s*\(recommended\)\s*$/i, "");
+  function openParts(q) {
+    const n = String(q.notes || "");
+    const bar = n.indexOf(" | ");
+    const head = n.startsWith("Recommendation: ") ? (bar >= 0 ? n.slice(0, bar) : n) : "";
+    const background = head ? (bar >= 0 ? n.slice(bar + 3) : "") : n;
+    let rec = "", why = "";
+    if (head) {
+      const m = head.match(/^Recommendation: (.*?)\.?(?: Why: (.*?))?\.?(?: To answer,.*)?$/);
+      if (m) { rec = m[1] || ""; why = m[2] || ""; }
+    }
+    if (!rec) { const o = (q.options || []).find(isRec); if (o) rec = bareLabel(o.label); }
+    return { rec, why, background };
+  }
+
+  // An open question: what it is about, what Claude recommends, and a place to answer it.
+  function openQuestionHtml(q) {
+    const reqs = reqsFor(q.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const pending = reqs.find(isActive);
+    const { rec, why, background: bg } = openParts(q);
+    const opts = (q.options || []).filter((o) => o.label).slice().sort((a, b) => isRec(b) - isRec(a));
+    const nm = "a-" + q.id;
+    const form = !state.me ? "" : `<form class="ask" data-qid="${esc(q.id)}" data-kind="answer">
+      <fieldset><legend>Your answer</legend>
+        ${opts.map((o, i) => `<label class="choice"><input type="radio" name="${esc(nm)}" value="${esc(bareLabel(o.label))}"><span>${esc(bareLabel(o.label))}${isRec(o) ? ' <span class="pill decided">Recommended</span>' : ""}${o.description ? `<span class="desc">${esc(o.description)}</span>` : ""}</span></label>`).join("")}
+        <label class="choice"><input type="radio" name="${esc(nm)}" value="__own" ${opts.length ? "" : "checked"}><span>In my own words</span></label>
+      </fieldset>
+      <label for="w-${esc(q.id)}" class="muted">${opts.length ? "Your words: needed if you answer in your own words, optional detail otherwise" : "Your answer, in your own words"}</label>
+      <textarea id="w-${esc(q.id)}" placeholder="Say what should happen"></textarea>
+      <p class="err" hidden></p>
+      <div class="actions"><button class="btn" type="submit">Send answer</button></div>
+    </form>`;
+    return `<article class="q" id="${esc(q.id)}">
+      <div class="q-head"><span class="q-num">${qnum(q)}</span>${q.topic ? `<span class="topic">${esc(q.topic)}</span>` : ""}
+        <span>${esc(fmtDate(q.asked_at))}</span></div>
+      <p class="q-text">${esc(q.question)}</p>
+      ${bg ? `<details class="bg"><summary>Background</summary><p>${esc(bg)}</p></details>` : ""}
+      ${rec ? `<div class="rec"><span class="label">Recommendation</span><span class="val">${esc(rec)}</span>${why ? `<span class="why">${esc(why)}</span>` : ""}</div>` : ""}
+      ${pending ? `<div class="answer marked"><span class="label">Answer sent · Claude records it at the next run</span>
+        <span class="val">${esc(pending.proposed)}</span>${pending.reason ? `<span>${esc(pending.reason)}</span>` : ""}</div>` : form}
+    </article>`;
+  }
+
   function questionHtml(q) {
+    if (!q.answer) return openQuestionHtml(q);
     const reqs = reqsFor(q.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     const marked = reqs.some(isActive);
     const prev = (q.history || []).filter((x) => x && x.answer).slice(-1)[0];
@@ -341,7 +398,9 @@ footer { font-size: .85rem; color: var(--muted) }
         const ra = reqsFor(a.id).some((r) => r.status === "open") ? 0 : 1, rb = reqsFor(b.id).some((r) => r.status === "open") ? 0 : 1;
         return ra - rb || (a.n || 0) - (b.n || 0);
       });
-      list.innerHTML = qs.length ? qs.map(questionHtml).join("")
+      // Two groups: questions with no answer yet, then settled ones a change request has reopened.
+      const group = (title, g) => g.length ? `<h2 class="group">${title} <span class="muted">${g.length}</span></h2>${g.map(questionHtml).join("")}` : "";
+      list.innerHTML = qs.length ? group("Needs an answer", qs.filter((q) => !q.answer)) + group("Change requested", qs.filter((q) => q.answer))
         : `<div class="empty"><h2>Nothing open</h2><p class="muted">Every question has an answer and no change is waiting. When a reviewer requests a change on a settled question, it moves here and the owner is emailed.</p></div>`;
     } else {
       const qs = shown.filter((q) => !isOpenQ(q));
@@ -375,6 +434,24 @@ footer { font-size: .85rem; color: var(--muted) }
     const f = e.target, qid = f.dataset.qid;
     const q = state.questions.find((x) => x.id === qid);
     const errEl = f.querySelector(".err");
+    if (f.dataset.kind === "answer") {
+      const sel = f.querySelector("input[type=radio]:checked");
+      const words = f.querySelector("textarea").value.trim();
+      const own = !sel || sel.value === "__own";
+      if (own && !words) { errEl.textContent = "Write your answer, or choose one of the options."; errEl.hidden = false; return; }
+      const btn = f.querySelector("button[type=submit]"); btn.disabled = true;
+      try {
+        // The owner's answer needs no second approval; anyone else's waits for the owner like a change request.
+        await state.db.collection("requests").add({
+          kind: "answer", question_id: qid, question: q ? q.question : "", current_answer: "",
+          proposed: (own ? words : sel.value).slice(0, 2000), reason: own ? "" : words.slice(0, 2000),
+          by: state.me || "", created_at: new Date().toISOString(),
+          status: state.canEdit ? "accepted" : "open", notified_at: null,
+        });
+        toast(state.canEdit ? "Answer sent. Claude records it at the next run." : "Answer sent to the owner for approval."); render();
+      } catch (err) { btn.disabled = false; errEl.textContent = writeError(err); errEl.hidden = false; }
+      return;
+    }
     const pick = f.querySelector(`input[name="p-${CSS.escape(qid)}"]:checked`);
     const other = f.querySelector("input[type=text]").value.trim();
     const reason = f.querySelector("textarea").value.trim();
